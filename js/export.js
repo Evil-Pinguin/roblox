@@ -1,12 +1,14 @@
 /* ============================================================
    export.js — ЭКСПОРТ / ИМПОРТ / СБРОС
    Файл: { version: 2, project: { theme, slides[] } }
+   Изменения — только через App.setState.
    ============================================================ */
 window.App = window.App || {};
 (function (App) {
 'use strict';
 
 const state = App.state;
+const setState = App.setState;
 const R = App.render;
 const $ = R.$;
 const toast = R.toast;
@@ -26,30 +28,26 @@ function exportProject() {
 function importProject(obj) {
   const project = App.migrateProject(obj);
   if (!project) { toast('Файл не похож на проект'); return; }
-  state.project = project;
-  state.ui.current = 0;
-  state.ui.selected = null;
-  state.ui.editingId = null;
-  state.ui.presentEdit = false;
-  document.body.classList.remove('present-edit');
-  const pEdit = document.getElementById('pEdit');
-  if (pEdit) pEdit.classList.remove('active');
-  App.editor.applyThemeDom();
-  R.renderAll();
-  App.storage.save();
+  setState(() => {
+    state.project = project;
+    state.ui.current = 0;
+    state.ui.selected = null;
+    state.ui.editingId = null;
+    state.ui.presentEdit = false;
+  });
   toast('Проект загружен');
 }
 
 function resetProject() {
   if (!confirm('Сбросить всё и вернуть демо-презентацию?')) return;
   App.storage.clear();
-  state.project = App.defaultProject();
-  state.ui.current = 0;
-  state.ui.selected = null;
-  state.ui.editingId = null;
-  App.editor.applyThemeDom();
-  R.renderAll();
-  App.storage.save();
+  setState(() => {
+    state.project = App.defaultProject();
+    state.ui.current = 0;
+    state.ui.selected = null;
+    state.ui.editingId = null;
+    state.ui.presentEdit = false;
+  });
   toast('Сброшено к началу');
 }
 

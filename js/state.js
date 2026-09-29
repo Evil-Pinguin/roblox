@@ -115,11 +115,28 @@ const state = {
     current: 0,        // индекс открытого слайда
     selected: null,    // id выбранного элемента
     editingId: null,   // id текста, который сейчас редактируется
+    present: false,    // открыта ли презентация
     presentEdit: false,// режим редактирования внутри презентации
+    bgModal: false,    // модалка «Удалить фон»
     scale: 1,          // масштаб сцены редактора
     presentScale: 1,   // масштаб слайда в презентации
   },
 };
+
+/* ============================================================
+   setState() — ЕДИНСТВЕННАЯ точка изменения состояния.
+   Любое изменение: setState(mutator) → мутация → перерисовка
+   (renderAll, включая chrome: тема, презентация, модалка фона) →
+   автосохранение. Мутации state в обход setState запрещены;
+   исключение — «живой предпросмотр» внутри жестов (drag/resize,
+   слайдеры, ввод текста): он пишет сразу, а коммит жеста идёт
+   через setState.
+   ============================================================ */
+function setState(mutator) {
+  if (typeof mutator === 'function') mutator(state);
+  App.render.renderAll();
+  App.storage.save();
+}
 
 /* ---------- доступ ---------- */
 const slideOf = () => state.project.slides[state.ui.current];
@@ -188,6 +205,7 @@ function remapTextColors(theme) {
 }
 
 App.state = state;
+App.setState = setState;
 App.SLIDE_W = SLIDE_W;
 App.SLIDE_H = SLIDE_H;
 App.uid = uid;

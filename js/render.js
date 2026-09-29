@@ -1,6 +1,9 @@
 /* ============================================================
    render.js — ОТРИСОВКА
-   buildNode, сцена, миниатюры, презентация, тулбар, тосты
+   Вызывается из setState (renderAll) и при загрузке.
+   Сцена/презентация обновляют узлы НА МЕСТЕ, если структура
+   слайда не изменилась — это позволяет рисовать прямо во время
+   pointerdown/blur, не разрывая жесты и клики.
    ============================================================ */
 window.App = window.App || {};
 (function (App) {
@@ -13,16 +16,50 @@ const SLIDE_H = App.SLIDE_H;
 const $  = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
 
-/* ---------- узел элемента ---------- */
-function buildNode(e, interactive) {
-  const div = document.createElement('div');
-  div.className = 'el ' + e.type + (state.ui.selected === e.id ? ' selected' : '');
-  div.dataset.id = e.id;
+/* ---------- синхронизация «chrome» (DOM вне сцены) ---------- */
+function syncChrome() {
+  // тема
+  document.body.dataset.theme = state.project.theme;
+  $$('#themeSwitch button').forEach(b => {
+    b.classList.toggle('active', b.dataset.theme === state.project.theme);
+  });
+  // презентация
+  const p = $('#present');
+  if (p) {
+    p.classList.toggle('hidden', !state.ui.present);
+    p.classList.toggle('edit', state.ui.presentEdit);
+  }
+  document.body.classList.toggle('present-edit', state.ui.presentEdit);
+  const pe = $('#pEdit');
+  if (pe) pe.classList.toggle('active', state.ui.presentEdit);
+  // модалка фона
+  const bm = $('#bgModal');
+  if (bm) bm.classList.toggle('hidden', !state.ui.bgModal);
+}
+
+/* ---------- текст узла без разрушения .handle ---------- */
+function setTextSafe(div, text) {
+  if (div.textContent === text) return;      // не трогаем активную правку
+  let handle = null;
+  for (const ch of div.children) {
+    if (ch.classList && ch.classList.contains('handle')) { handle = ch; break; }
+  }
+  div.textContent = '';
+  div.appendChild(document.createTextNode(text));
+  if (handle) div.appendChild(handle);
+}
+
+/* ---------- применить данные элемента к существующему узлу ---------- */
+function applyElStyles(div, e) {
+  const editing = div.getAttribute('contenteditable') === 'true';
+  div.className = 'el ' + e.type +
+    (state.ui.selected === e.id ? ' selected' : '') +
+    (editing ? ' editing' : '');
   div.style.left = e.x + 'px';
   div.style.top = e.y + 'px';
   div.style.opacity = e.props.opacity != null ? e.props.opacity : 1;
   div.style.zIndex = e.zIndex;
-  if (e.rotation) div.style.transform = `rotate(${e.rotation}deg)`;
+  div.style.transform = e.rotation ? `rotate(${e.rotation}deg)` : '';
 
   if (e.type === 'text') {
     div.style.width = e.w + 'px';
@@ -31,24 +68,38 @@ function buildNode(e, interactive) {
     div.style.fontWeight = e.props.weight;
     div.style.fontStyle = e.props.italic ? 'italic' : 'normal';
     div.style.textAlign = e.props.align;
-    if (e.props.fontFamily) div.style.fontFamily = e.props.fontFamily;
-    div.textContent = e.props.text;
+    div.style.fontFamily = e.props.fontFamily || '';
+    setTextSafe(div, e.props.text);
   } else if (e.type === 'image') {
     div.style.width = e.w + 'px';
     div.style.height = e.h + 'px';
     div.style.borderRadius = (e.props.radius || 0) + 'px';
-    const img = document.createElement('img');
-    img.alt = '';
-    img.addEventListener('load', () => {
-      if (!e.props.ar && img.naturalWidth) e.props.ar = img.naturalWidth / img.naturalHeight;
-    });
-    img.src = e.props.src;
-    div.appendChild(img);
+    const img = div.querySelector('img');
+    if (img && img.getAttribute('src') !== e.props.src) img.src = e.props.src;
   } else if (e.type === 'block') {
     div.style.width = e.w + 'px';
     div.style.height = e.h + 'px';
     div.style.borderRadius = (e.props.radius || 22) + 'px';
     div.style.background = e.props.fill || 'rgba(127,127,127,.14)';
+  }
+}
+
+/* ---------- узел элемента ---------- */
+function buildNode(e, interactive) {
+  const div = document.createElement('div');
+  div.dataset.id = e.id;
+  applyElStyles(div, e);
+
+  if (e.type === 'image') {
+    const img = document.createElement('img');
+    img.alt = '';
+    img.addEventListener('load', () => {
+      if (!e.props.ar && img.naturalWidth) {
+        App.setState(() => { e.props.ar = img.naturalWidth / img.naturalHeight; });
+      }
+    });
+    img.src = e.props.src;
+    div.appendChild(img);
   }
 
   if (interactive) {
@@ -67,16 +118,28 @@ function makeScaler(slide, interactive) {
   return sc;
 }
 
+/* Обновить узлы на месте; false — структура изменилась, нужна пересборка */
+function refreshNodes(box, slide) {
+  const nodes = box.children;
+  if (nodes.length !== slide.elements.length) return false;
+  for (let i = 0; i < nodes.length; i++) {
+    const e = slide.elements[i];
+    const n = nodes[i];
+    if (n.dataset.id !== String(e.id) || !n.classList.contains(e.type)) return false;
+  }
+  for (let i = 0; i < nodes.length; i++) applyElStyles(nodes[i], slide.elements[i]);
+  return true;
+}
+
 function presentOpen() {
-  const p = $('#present');
-  return !!p && !p.classList.contains('hidden');
+  return !!state.ui.present;
 }
 
 function activeScale() {
   return presentOpen() ? state.ui.presentScale : state.ui.scale;
 }
 
-/* id элемента в той панели, которая сейчас видима: презентация или редактор */
+/* id элемента в той панели, которая сейчас видима */
 function elNode(id) {
   if (!id) return null;
   const scope = presentOpen() ? '#presentStage' : '#stage';
@@ -86,21 +149,32 @@ function elNode(id) {
 /* ---------- сцена редактора ---------- */
 function renderStage() {
   const stage = $('#stage');
-  stage.innerHTML = '';
-  const vp = document.createElement('div');
-  vp.className = 'slide-frame slide-viewport';
-  vp.id = 'stageViewport';
   const slide = App.slideOf();
-  if (slide.bg) vp.style.background = slide.bg;
-  vp.appendChild(makeScaler(slide, true));
+  if (!stage || !slide) return;
 
-  vp.addEventListener('pointerdown', ev => {
-    if (ev.target === vp || ev.target.classList.contains('slide-scaler')) {
-      App.editor.select(null);
-      App.editor.commitEdit();
-    }
-  });
-  stage.appendChild(vp);
+  let vp = $('#stageViewport');
+  let sc = vp && vp.firstElementChild;
+  const reusable = vp &&
+    vp.dataset.slideId === String(slide.id) &&
+    sc && sc.classList.contains('slide-scaler') &&
+    refreshNodes(sc, slide);
+
+  if (!reusable) {
+    stage.innerHTML = '';
+    vp = document.createElement('div');
+    vp.className = 'slide-frame slide-viewport';
+    vp.id = 'stageViewport';
+    vp.dataset.slideId = slide.id;
+    sc = makeScaler(slide, true);
+    vp.appendChild(sc);
+    vp.addEventListener('pointerdown', ev => {
+      if (ev.target === vp || ev.target.classList.contains('slide-scaler')) {
+        App.editor.select(null);
+      }
+    });
+    stage.appendChild(vp);
+  }
+  vp.style.background = slide.bg || '';
   fitStage();
 
   // синхронизация реальной высоты текста в модель (h в схеме v2)
@@ -178,13 +252,29 @@ function renderPresent() {
   const s = App.slideOf();
   const box = $('#presentStage');
   if (!box || !s) return;
-  box.innerHTML = '';
-  const vp = document.createElement('div');
-  vp.className = 'slide-viewport';
-  vp.style.position = 'relative';
-  if (s.bg) vp.style.background = s.bg;
-  vp.appendChild(makeScaler(s, state.ui.presentEdit)); // интерактив — только в режиме правки
-  box.appendChild(vp);
+  const inter = String(state.ui.presentEdit);
+
+  let vp = box.firstElementChild;
+  let sc = vp && vp.firstElementChild;
+  const reusable = vp &&
+    vp.classList.contains('slide-viewport') &&
+    vp.dataset.slideId === String(s.id) &&
+    vp.dataset.interactive === inter &&
+    sc && sc.classList.contains('slide-scaler') &&
+    refreshNodes(sc, s);
+
+  if (!reusable) {
+    box.innerHTML = '';
+    vp = document.createElement('div');
+    vp.className = 'slide-viewport';
+    vp.style.position = 'relative';
+    vp.dataset.slideId = s.id;
+    vp.dataset.interactive = inter;
+    sc = makeScaler(s, state.ui.presentEdit); // интерактив — только в режиме правки
+    vp.appendChild(sc);
+    box.appendChild(vp);
+  }
+  vp.style.background = s.bg || '';
 
   // в режиме правки слайд вписывается между панелями конструктора
   let padL = 0, padR = 0;
@@ -195,11 +285,11 @@ function renderPresent() {
     padR = rp && getComputedStyle(rp).display !== 'none' ? rp.offsetWidth : 0;
   }
   const availW = window.innerWidth - padL - padR;
-  const sc = Math.min((availW * 0.94) / SLIDE_W, (window.innerHeight * 0.88) / SLIDE_H);
-  state.ui.presentScale = sc;
-  vp.style.width = Math.round(SLIDE_W * sc) + 'px';
-  vp.style.height = Math.round(SLIDE_H * sc) + 'px';
-  vp.querySelector('.slide-scaler').style.transform = `scale(${sc})`;
+  const k = Math.min((availW * 0.94) / SLIDE_W, (window.innerHeight * 0.88) / SLIDE_H);
+  state.ui.presentScale = k;
+  vp.style.width = Math.round(SLIDE_W * k) + 'px';
+  vp.style.height = Math.round(SLIDE_H * k) + 'px';
+  sc.style.transform = `scale(${k})`;
   // центрируем в зоне между панелями
   box.style.transform = `translateX(${Math.round((padL - padR) / 2)}px)`;
   $('#pCounter').textContent = `${state.ui.current + 1} / ${state.project.slides.length}`;
@@ -243,18 +333,25 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.remove('show'), 2600);
 }
 
-/* ---------- перерисовка всего ---------- */
+/* ---------- ПОЛНАЯ перерисовка (вызывается только из setState) ---------- */
 function renderAll() {
+  syncChrome();
   renderStage();
-  if (presentOpen()) renderPresent();
+  if (presentOpen()) {
+    renderPresent();
+  } else {
+    const ps = $('#presentStage');
+    if (ps && ps.innerHTML) ps.innerHTML = '';
+  }
   renderThumbs();
   App.editor.renderProps();
   positionToolbar();
 }
 
 App.render = {
-  $, $$, buildNode, makeScaler, renderStage, fitStage, renderThumbs,
-  renderPresent, positionToolbar, elNode, activeScale, presentOpen,
+  $, $$, buildNode, makeScaler, refreshNodes, syncChrome, setTextSafe,
+  renderStage, fitStage, renderThumbs, renderPresent,
+  positionToolbar, elNode, activeScale, presentOpen,
   toast, renderAll,
 };
 

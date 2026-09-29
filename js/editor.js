@@ -1,7 +1,9 @@
 /* ============================================================
    editor.js — РЕДАКТИРОВАНИЕ
-   выделение, правка текста, drag/resize, CRUD элементов и
-   слайдов, панель свойств, темы, режим презентации, удаление фона
+   Все изменения состояния идут через App.setState(mutator) →
+   renderAll → save. «Живой предпросмотр» (drag/resize, слайдеры,
+   ввод текста) пишет в модель и узел напрямую внутри жеста,
+   коммит жеста — через setState.
    ============================================================ */
 window.App = window.App || {};
 (function (App) {
@@ -14,25 +16,47 @@ const uid = App.uid;
 const slideOf = App.slideOf;
 const findEl = App.findEl;
 const normalizeZ = App.normalizeZ;
-const save = App.storage.save;
+const setState = App.setState;
 const R = App.render;
 const $ = R.$;
 const $$ = R.$$;
 const toast = R.toast;
 const elNode = R.elNode;
 const activeScale = R.activeScale;
+const setTextSafe = R.setTextSafe;
 
 /* ============================================================
    ВЫДЕЛЕНИЕ / ПРАВКА ТЕКСТА
    ============================================================ */
+
+/* запись правленого текста в модель — без рендера (для мутаторов) */
+function flushCommit() {
+  if (!state.ui.editingId) return;
+  const id = state.ui.editingId;
+  const node = elNode(id);
+  const e = findEl(id);
+  state.ui.editingId = null;
+  if (node) {
+    node.removeAttribute('contenteditable');
+    node.classList.remove('editing');
+    if (e) {
+      const raw = node.innerText != null ? node.innerText : node.textContent;
+      e.props.text = String(raw).replace(/\n$/, '');
+      if (node.offsetHeight > 0) e.h = node.offsetHeight;
+    }
+  }
+}
+
+function commitEdit() {
+  setState(() => flushCommit());
+}
+
 function select(id) {
-  if (state.ui.editingId && state.ui.editingId !== id) commitEdit();
-  state.ui.selected = id;
-  $$('#stage .el, #presentStage .el').forEach(n => {
-    n.classList.toggle('selected', n.dataset.id === id);
+  setState(() => {
+    if (state.ui.editingId && state.ui.editingId !== id) flushCommit();
+    if (id && !findEl(id)) id = null;
+    state.ui.selected = id;
   });
-  renderProps();
-  R.positionToolbar();
 }
 
 function startEdit(id) {
@@ -40,7 +64,7 @@ function startEdit(id) {
   if (!e || e.type !== 'text') return;
   const node = elNode(id);
   if (!node) return;
-  state.ui.editingId = id;
+  setState(() => { state.ui.editingId = id; });
   node.classList.add('editing');
   node.setAttribute('contenteditable', 'true');
   node.style.whiteSpace = 'pre-wrap';
@@ -57,27 +81,6 @@ function startEdit(id) {
     ev.stopPropagation();
     if (ev.key === 'Escape') { node.blur(); }
   });
-  R.positionToolbar();
-}
-
-function commitEdit() {
-  if (!state.ui.editingId) return;
-  const id = state.ui.editingId;
-  const node = elNode(id);
-  const e = findEl(id);
-  state.ui.editingId = null;
-  if (node) {
-    node.removeAttribute('contenteditable');
-    node.classList.remove('editing');
-    if (e) {
-      const raw = node.innerText != null ? node.innerText : node.textContent;
-      e.props.text = String(raw).replace(/\n$/, '');
-      if (node.offsetHeight > 0) e.h = node.offsetHeight;
-    }
-  }
-  if (e) R.renderThumbs();
-  renderProps();
-  save();
 }
 
 /* ============================================================
@@ -102,16 +105,18 @@ function bindNodeEvents(node, handle, e) {
       const dy = (mv.clientY - startY) / activeScale();
       if (!moved && Math.hypot(dx, dy) < 2) return;
       moved = true;
+      // живой предпросмотр внутри жеста (узел не пересоздаётся)
       e.x = Math.round(Math.max(-(e.w - 40), Math.min(SLIDE_W - 40, ox + dx)));
       e.y = Math.round(Math.max(-20, Math.min(SLIDE_H - 30, oy + dy)));
-      node.style.left = e.x + 'px';
-      node.style.top = e.y + 'px';
+      const live = elNode(e.id) || node;
+      live.style.left = e.x + 'px';
+      live.style.top = e.y + 'px';
       R.positionToolbar();
     };
     const onUp = () => {
       node.removeEventListener('pointermove', onMove);
       node.removeEventListener('pointerup', onUp);
-      if (moved) { R.renderThumbs(); save(); }
+      if (moved) setState();   // коммит жеста
     };
     node.addEventListener('pointermove', onMove);
     node.addEventListener('pointerup', onUp);
@@ -138,31 +143,30 @@ function bindNodeEvents(node, handle, e) {
 
     const onMove = mv => {
       const dx = (mv.clientX - startX) / activeScale();
+      const live = elNode(e.id) || node;
       if (cur.type === 'text') {
         cur.w = Math.round(Math.max(60, Math.min(SLIDE_W, ow + dx)));
-        node.style.width = cur.w + 'px';
+        live.style.width = cur.w + 'px';
       } else if (cur.type === 'image') {
         const nw = Math.round(Math.max(60, Math.min(SLIDE_W, ow + dx)));
         const ar = cur.props.ar || (ow / oh) || 1;
         cur.w = nw;
         cur.h = Math.round(nw / ar);
-        node.style.width = cur.w + 'px';
-        node.style.height = cur.h + 'px';
+        live.style.width = cur.w + 'px';
+        live.style.height = cur.h + 'px';
       } else {
         const dy = (mv.clientY - startY) / activeScale();
         cur.w = Math.round(Math.max(60, Math.min(SLIDE_W, ow + dx)));
         cur.h = Math.round(Math.max(40, Math.min(SLIDE_H, oh + dy)));
-        node.style.width = cur.w + 'px';
-        node.style.height = cur.h + 'px';
+        live.style.width = cur.w + 'px';
+        live.style.height = cur.h + 'px';
       }
       R.positionToolbar();
     };
     const onUp = () => {
       handle.removeEventListener('pointermove', onMove);
       handle.removeEventListener('pointerup', onUp);
-      R.renderThumbs();
-      renderProps();
-      save();
+      setState();   // коммит жеста
     };
     handle.addEventListener('pointermove', onMove);
     handle.addEventListener('pointerup', onUp);
@@ -178,12 +182,14 @@ function addText() {
     text: 'Новый текст',
     color: state.project.theme === 'glass' ? '#1c1c1e' : '#eafcff',
   });
-  const arr = slideOf().elements;
-  arr.push(e);
-  normalizeZ(slideOf());
-  R.renderAll();
-  select(e.id);
-  save();
+  setState(() => {
+    flushCommit();
+    const arr = slideOf().elements;
+    arr.push(e);
+    normalizeZ(slideOf());
+    state.ui.selected = e.id;
+  });
+  toast('Текст добавлен — двойной клик для правки');
   setTimeout(() => startEdit(e.id), 60);
 }
 
@@ -193,12 +199,13 @@ function addBlock() {
     radius: 22,
     fill: state.project.theme === 'glass' ? 'rgba(255,255,255,.55)' : 'rgba(0,240,255,.10)',
   });
-  const arr = slideOf().elements;
-  arr.push(e);
-  normalizeZ(slideOf());
-  R.renderAll();
-  select(e.id);
-  save();
+  setState(() => {
+    flushCommit();
+    const arr = slideOf().elements;
+    arr.push(e);
+    normalizeZ(slideOf());
+    state.ui.selected = e.id;
+  });
 }
 
 function addImageFromSrc(src, ar) {
@@ -209,37 +216,41 @@ function addImageFromSrc(src, ar) {
     y: Math.round(300 - h / 2),
     w, h, radius: 24, src, ar,
   });
-  const arr = slideOf().elements;
-  arr.push(e);
-  normalizeZ(slideOf());
-  R.renderAll();
-  select(e.id);
-  save();
+  setState(() => {
+    flushCommit();
+    const arr = slideOf().elements;
+    arr.push(e);
+    normalizeZ(slideOf());
+    state.ui.selected = e.id;
+  });
 }
 
 function duplicateEl(id) {
   const src = findEl(id);
   if (!src) return;
-  const copy = JSON.parse(JSON.stringify(src));
-  copy.id = uid();
-  copy.x += 28; copy.y += 28;
-  const arr = slideOf().elements;
-  arr.push(copy);
-  normalizeZ(slideOf());
-  R.renderAll();
-  select(copy.id);
-  save();
+  setState(() => {
+    flushCommit();
+    const copy = JSON.parse(JSON.stringify(src));
+    copy.id = uid();
+    copy.x += 28; copy.y += 28;
+    const arr = slideOf().elements;
+    arr.push(copy);
+    normalizeZ(slideOf());
+    state.ui.selected = copy.id;
+  });
 }
 
 function deleteEl(id) {
   const s = slideOf();
-  const i = s.elements.findIndex(e => e.id === id);
-  if (i < 0) return;
-  s.elements.splice(i, 1);
-  normalizeZ(s);
-  state.ui.selected = null;
-  R.renderAll();
-  save();
+  if (!s.elements.some(e => e.id === id)) return;
+  setState(() => {
+    flushCommit();
+    const arr = slideOf().elements;
+    const i = arr.findIndex(e => e.id === id);
+    if (i >= 0) arr.splice(i, 1);
+    normalizeZ(slideOf());
+    state.ui.selected = null;
+  });
 }
 
 function layerEl(id, dir) {
@@ -248,61 +259,67 @@ function layerEl(id, dir) {
   if (i < 0) return;
   const j = dir === 'up' ? i + 1 : i - 1;
   if (j < 0 || j >= arr.length) return;
-  [arr[i], arr[j]] = [arr[j], arr[i]];
-  normalizeZ(slideOf());
-  R.renderAll();
-  select(id);
-  save();
+  setState(() => {
+    flushCommit();
+    const a = slideOf().elements;
+    const k = a.findIndex(e => e.id === id);
+    const m = dir === 'up' ? k + 1 : k - 1;
+    if (k < 0 || m < 0 || m >= a.length) return;
+    [a[k], a[m]] = [a[m], a[k]];
+    normalizeZ(slideOf());
+    state.ui.selected = id;
+  });
 }
 
 /* ============================================================
    CRUD СЛАЙДОВ
    ============================================================ */
 function addSlide() {
-  commitEdit();
-  state.project.slides.push(App.makeSlide([
+  const slide = App.makeSlide([
     App.makeText({
       x: 60, y: 46, w: 900, h: 70,
       text: 'Заголовок слайда', fontSize: 56, weight: 900,
       color: state.project.theme === 'glass' ? '#1c1c1e' : '#eafcff',
     }),
-  ]));
-  state.ui.current = state.project.slides.length - 1;
-  state.ui.selected = null;
-  R.renderAll();
-  save();
+  ]);
+  setState(() => {
+    flushCommit();
+    state.project.slides.push(slide);
+    state.ui.current = state.project.slides.length - 1;
+    state.ui.selected = null;
+  });
   toast('Слайд добавлен');
 }
 
 function duplicateSlide(i) {
-  commitEdit();
-  const copy = JSON.parse(JSON.stringify(state.project.slides[i]));
-  copy.id = uid();
-  copy.elements.forEach(e => e.id = uid());
-  state.project.slides.splice(i + 1, 0, copy);
-  state.ui.current = i + 1;
-  state.ui.selected = null;
-  R.renderAll();
-  save();
+  setState(() => {
+    flushCommit();
+    const copy = JSON.parse(JSON.stringify(state.project.slides[i]));
+    copy.id = uid();
+    copy.elements.forEach(e => e.id = uid());
+    state.project.slides.splice(i + 1, 0, copy);
+    state.ui.current = i + 1;
+    state.ui.selected = null;
+  });
 }
 
 function deleteSlide(i) {
   if (state.project.slides.length === 1) { toast('Нельзя удалить последний слайд'); return; }
-  commitEdit();
-  state.project.slides.splice(i, 1);
-  state.ui.current = Math.min(state.ui.current, state.project.slides.length - 1);
-  if (state.ui.current === i) state.ui.current = Math.max(0, i - 1);
-  state.ui.selected = null;
-  R.renderAll();
-  save();
+  setState(() => {
+    flushCommit();
+    state.project.slides.splice(i, 1);
+    state.ui.current = Math.min(state.ui.current, state.project.slides.length - 1);
+    if (state.ui.current === i) state.ui.current = Math.max(0, i - 1);
+    state.ui.selected = null;
+  });
 }
 
 function gotoSlide(i) {
-  commitEdit();
-  state.ui.current = i;
-  state.ui.selected = null;
-  R.renderAll();
-  save();
+  setState(() => {
+    flushCommit();
+    state.ui.current = i;
+    state.ui.selected = null;
+  });
 }
 
 /* ============================================================
@@ -382,9 +399,8 @@ function renderBaseProps(panel) {
   panel.querySelector('[data-a="del-slide"]').onclick = () => deleteSlide(state.ui.current);
   panel.querySelectorAll('#bgSwatches .swatch').forEach(sw => {
     sw.onclick = () => {
-      slideOf().bg = BG_PRESETS[+sw.dataset.i].css;
-      R.renderAll();
-      save();
+      const bg = BG_PRESETS[+sw.dataset.i].css;
+      setState(() => { flushCommit(); slideOf().bg = bg; });
     };
   });
 }
@@ -446,12 +462,14 @@ function renderTextProps(panel, e) {
 
   const ta = panel.querySelector('#pText');
   ta.value = e.props.text;
+  // живой предпросмотр: пока пользователь печатает, панель не пересобираем
   ta.addEventListener('input', () => {
     e.props.text = ta.value;
     const node = elNode(e.id);
-    if (node) node.textContent = e.props.text;
+    if (node) setTextSafe(node, e.props.text);
     scheduleThumbSave();
   });
+  ta.addEventListener('change', () => setState());   // коммит ввода
 
   bindRange(panel, '#pSize', '#pSizeOut', v => {
     e.props.fontSize = +v;
@@ -460,28 +478,29 @@ function renderTextProps(panel, e) {
   bindRange(panel, '#pOpacity', null, v => { e.props.opacity = v / 100; applyTextStyle(e); });
 
   panel.querySelector('#pBold').onclick = () => {
-    e.props.weight = e.props.weight >= 700 ? 400 : 800;
-    applyTextStyle(e); renderProps(); save();
+    const w = e.props.weight >= 700 ? 400 : 800;
+    setState(() => { e.props.weight = w; });
   };
   panel.querySelector('#pItalic').onclick = () => {
-    e.props.italic = !e.props.italic;
-    applyTextStyle(e); renderProps(); save();
+    setState(() => { e.props.italic = !e.props.italic; });
   };
   panel.querySelector('#pFont').onchange = ev => {
-    e.props.fontFamily = ev.target.value; applyTextStyle(e); save();
+    const ff = ev.target.value;
+    setState(() => { e.props.fontFamily = ff; });
   };
   panel.querySelectorAll('[data-al]').forEach(b => {
-    b.onclick = () => { e.props.align = b.dataset.al; applyTextStyle(e); renderProps(); save(); };
+    b.onclick = () => { const al = b.dataset.al; setState(() => { e.props.align = al; }); };
   });
   panel.querySelector('#pColor').oninput = ev => { e.props.color = ev.target.value; applyTextStyle(e); };
-  panel.querySelector('#pColor').addEventListener('change', save);
+  panel.querySelector('#pColor').addEventListener('change', () => setState());
   panel.querySelectorAll('#pSw .swatch').forEach(sw => {
-    sw.onclick = () => { e.props.color = sw.dataset.c; applyTextStyle(e); renderProps(); save(); };
+    sw.onclick = () => { const c = sw.dataset.c; setState(() => { e.props.color = c; }); };
   });
   panel.querySelector('#pDup').onclick = () => duplicateEl(e.id);
   panel.querySelector('#pDel').onclick = () => deleteEl(e.id);
 }
 
+/* живой предпросмотр стиля текста (внутри жеста ввода/слайдера) */
 function applyTextStyle(e) {
   const node = elNode(e.id);
   if (node) {
@@ -538,9 +557,10 @@ function renderImageProps(panel, e) {
   panel.querySelector('#pBg').onclick = () => openBgModal(e.id);
   const rest = panel.querySelector('#pRestore');
   if (rest) rest.onclick = () => {
-    e.props.src = e.props.originalSrc;
-    e.props.originalSrc = null;
-    R.renderAll(); renderProps(); save();
+    setState(() => {
+      e.props.src = e.props.originalSrc;
+      e.props.originalSrc = null;
+    });
     toast('Оригинал восстановлен');
   };
 
@@ -591,7 +611,7 @@ function renderBlockProps(panel, e) {
     const n = nodeOf(); if (n) n.style.background = e.props.fill;
     scheduleThumbSave();
   };
-  panel.querySelector('#pFill').addEventListener('change', save);
+  panel.querySelector('#pFill').addEventListener('change', () => setState());
   bindRange(panel, '#pRadius', null, v => {
     e.props.radius = +v; const n = nodeOf(); if (n) n.style.borderRadius = v + 'px';
   });
@@ -602,6 +622,7 @@ function renderBlockProps(panel, e) {
   panel.querySelector('#pDel').onclick = () => deleteEl(e.id);
 }
 
+/* слайдер: input — живой предпросмотр, change — коммит через setState */
 function bindRange(panel, sel, outSel, fn) {
   const inp = panel.querySelector(sel);
   if (!inp) return;
@@ -610,13 +631,14 @@ function bindRange(panel, sel, outSel, fn) {
     if (out) out.textContent = inp.value;
     fn(inp.value);
   });
-  inp.addEventListener('change', save);
+  inp.addEventListener('change', () => setState());
 }
 
+/* отложенное обновление миниатюр для «живых» правок */
 let thumbTimer = null;
 function scheduleThumbSave() {
   clearTimeout(thumbTimer);
-  thumbTimer = setTimeout(() => { R.renderThumbs(); save(); }, 400);
+  thumbTimer = setTimeout(() => { R.renderThumbs(); App.storage.save(); }, 400);
 }
 
 /* ============================================================
@@ -658,15 +680,18 @@ function bindImageInput() {
     if (!file) return;
     processFile(file, (src, ar) => {
       if (replaceTargetId) {
-        const e = findEl(replaceTargetId);
+        const target = replaceTargetId;
+        replaceTargetId = null;
+        const e = findEl(target);
         if (e) {
-          if (!e.props.originalSrc) e.props.originalSrc = e.props.src;
-          e.props.src = src; e.props.ar = ar;
-          e.w = 460; e.h = Math.round(460 / ar);
-          R.renderAll(); select(e.id); save();
+          setState(() => {
+            if (!e.props.originalSrc) e.props.originalSrc = e.props.src;
+            e.props.src = src; e.props.ar = ar;
+            e.w = 460; e.h = Math.round(460 / ar);
+            state.ui.selected = e.id;
+          });
           toast('Фото заменено');
         }
-        replaceTargetId = null;
       } else {
         addImageFromSrc(src, ar);
         toast('Фото добавлено — попробуй «✨ Удалить фон»');
@@ -696,11 +721,19 @@ function openBgModal(id) {
   const img = new Image();
   img.onload = () => {
     bgSourceImg = img;
-    $('#bgModal').classList.remove('hidden');
+    setState(() => { state.ui.bgModal = true; });
     drawBgPreview();
   };
   img.onerror = () => toast('Изображение недоступно для обработки');
   img.src = e.props.src;
+}
+
+function closeBgModal() {
+  setState(() => {
+    state.ui.bgModal = false;
+    bgTargetId = null;
+    bgSourceImg = null;
+  });
 }
 
 function drawBgPreview() {
@@ -813,11 +846,14 @@ function applyBgRemoval() {
   const tol = +$('#bgTolerance').value;
   const feather = $('#bgFeather').checked;
   const result = removeBg(bgSourceImg, tol, feather);
-  if (!e.props.originalSrc) e.props.originalSrc = e.props.src;
-  e.props.src = result.toDataURL('image/png');
-  $('#bgModal').classList.add('hidden');
-  bgTargetId = null; bgSourceImg = null;
-  R.renderAll(); renderProps(); save();
+  const out = result.toDataURL('image/png');
+  setState(() => {
+    if (!e.props.originalSrc) e.props.originalSrc = e.props.src;
+    e.props.src = out;
+    state.ui.bgModal = false;
+    bgTargetId = null;
+    bgSourceImg = null;
+  });
   toast('Фон удалён ✨');
 }
 
@@ -829,10 +865,7 @@ function bindBgModal() {
     bgRaf = requestAnimationFrame(drawBgPreview);
   });
   $('#bgFeather').addEventListener('change', drawBgPreview);
-  $('#bgCancel').addEventListener('click', () => {
-    $('#bgModal').classList.add('hidden');
-    bgTargetId = null; bgSourceImg = null;
-  });
+  $('#bgCancel').addEventListener('click', closeBgModal);
   $('#bgApply').addEventListener('click', applyBgRemoval);
   $('#bgModal').addEventListener('click', ev => {
     if (ev.target === $('#bgModal')) $('#bgCancel').click();
@@ -860,23 +893,10 @@ function bindElToolbar() {
    ТЕМЫ
    ============================================================ */
 function setTheme(t) {
-  commitEdit();
-  if (state.project.theme !== t) App.remapTextColors(t);
-  state.project.theme = t;
-  document.body.dataset.theme = t;
-  $$('#themeSwitch button').forEach(b => b.classList.toggle('active', b.dataset.theme === t));
-  R.renderStage();
-  R.renderThumbs();
-  renderProps();
-  R.positionToolbar();
-  if (R.presentOpen()) R.renderPresent();
-  save();
-}
-
-function applyThemeDom() {
-  document.body.dataset.theme = state.project.theme;
-  $$('#themeSwitch button').forEach(b => {
-    b.classList.toggle('active', b.dataset.theme === state.project.theme);
+  setState(() => {
+    flushCommit();
+    if (state.project.theme !== t) App.remapTextColors(t);
+    state.project.theme = t;
   });
 }
 
@@ -891,38 +911,32 @@ function bindThemeSwitch() {
    РЕЖИМ ПРЕЗЕНТАЦИИ
    ============================================================ */
 function openPresent() {
-  commitEdit();
-  select(null);
-  $('#present').classList.remove('hidden');
-  R.renderPresent();
+  setState(() => {
+    flushCommit();
+    state.ui.selected = null;
+    state.ui.present = true;
+  });
   toast('Клик — дальше, ✏️ — редактировать прямо здесь, Esc — выход');
 }
 
 function closePresent() {
-  commitEdit();
-  if (state.ui.presentEdit) {
+  setState(() => {
+    flushCommit();
+    state.ui.present = false;
     state.ui.presentEdit = false;
-    $('#present').classList.remove('edit');
-    $('#pEdit').classList.remove('active');
-    document.body.classList.remove('present-edit');
-  }
-  $('#present').classList.add('hidden');
-  $('#presentStage').innerHTML = '';
-  state.ui.selected = null;
-  R.renderAll();
-  save();
+    state.ui.selected = null;
+  });
 }
 
 function togglePresentEdit() {
-  state.ui.presentEdit = !state.ui.presentEdit;
-  if (!state.ui.presentEdit) {
-    commitEdit();
-    state.ui.selected = null;
-  }
-  $('#present').classList.toggle('edit', state.ui.presentEdit);
-  $('#pEdit').classList.toggle('active', state.ui.presentEdit);
-  document.body.classList.toggle('present-edit', state.ui.presentEdit);
-  R.renderPresent();
+  const turningOff = state.ui.presentEdit;
+  setState(() => {
+    if (turningOff) {
+      flushCommit();
+      state.ui.selected = null;
+    }
+    state.ui.presentEdit = !turningOff;
+  });
   if (state.ui.presentEdit) {
     toast('✏️ Редактирование: клик — выбрать, двойной клик — правка текста');
   } else {
@@ -933,12 +947,11 @@ function togglePresentEdit() {
 function presentStep(d) {
   const n = state.ui.current + d;
   if (n < 0 || n >= state.project.slides.length) return;
-  commitEdit();
-  state.ui.current = n;   // редактор и поиск элементов всегда на том же слайде
-  state.ui.selected = null;
-  R.renderPresent();
-  R.renderThumbs();
-  save();
+  setState(() => {
+    flushCommit();
+    state.ui.current = n;   // редактор и поиск элементов всегда на том же слайде
+    state.ui.selected = null;
+  });
 }
 
 function bindPresent() {
@@ -968,7 +981,7 @@ function bindKeyboard() {
                        (t.matches('input, textarea, select') || t.isContentEditable));
 
     // режим презентации
-    if (R.presentOpen()) {
+    if (App.render.presentOpen()) {
       if (ev.key === 'F5') { ev.preventDefault(); return; }
       if (inField) {
         // фокус в поле свойств справа — Esc просто снимает фокус
@@ -997,14 +1010,12 @@ function bindKeyboard() {
           if (ev.key.startsWith('Arrow')) {
             ev.preventDefault();
             const step = ev.shiftKey ? 20 : 4;
-            if (ev.key === 'ArrowLeft')  e.x -= step;
-            if (ev.key === 'ArrowRight') e.x += step;
-            if (ev.key === 'ArrowUp')    e.y -= step;
-            if (ev.key === 'ArrowDown')  e.y += step;
-            const node = elNode(id);
-            if (node) { node.style.left = e.x + 'px'; node.style.top = e.y + 'px'; }
-            R.positionToolbar();
-            scheduleThumbSave();
+            setState(() => {
+              if (ev.key === 'ArrowLeft')  e.x -= step;
+              if (ev.key === 'ArrowRight') e.x += step;
+              if (ev.key === 'ArrowUp')    e.y -= step;
+              if (ev.key === 'ArrowDown')  e.y += step;
+            });
             return;
           }
         }
@@ -1024,7 +1035,7 @@ function bindKeyboard() {
 
     if (inField) return;
 
-    // модалка фона
+    // модалка фона (DOM синхронизируется из state через syncChrome)
     if (!$('#bgModal').classList.contains('hidden')) {
       if (ev.key === 'Escape') $('#bgCancel').click();
       return;
@@ -1046,14 +1057,12 @@ function bindKeyboard() {
     } else if (ev.key.startsWith('Arrow')) {
       ev.preventDefault();
       const step = ev.shiftKey ? 20 : 4;
-      if (ev.key === 'ArrowLeft')  e.x -= step;
-      if (ev.key === 'ArrowRight') e.x += step;
-      if (ev.key === 'ArrowUp')    e.y -= step;
-      if (ev.key === 'ArrowDown')  e.y += step;
-      const node = elNode(id);
-      if (node) { node.style.left = e.x + 'px'; node.style.top = e.y + 'px'; }
-      R.positionToolbar();
-      scheduleThumbSave();
+      setState(() => {
+        if (ev.key === 'ArrowLeft')  e.x -= step;
+        if (ev.key === 'ArrowRight') e.x += step;
+        if (ev.key === 'ArrowUp')    e.y -= step;
+        if (ev.key === 'ArrowDown')  e.y += step;
+      });
     }
   });
 }
@@ -1069,20 +1078,21 @@ function init() {
   bindElToolbar();
   bindPresent();
   bindKeyboard();
+  // изменение размеров окна — не изменение состояния, просто перерисовка
   window.addEventListener('resize', () => {
-    if (R.presentOpen()) R.renderPresent();
+    if (App.render.presentOpen()) R.renderPresent();
     else R.fitStage();
     R.positionToolbar();
   });
 }
 
 App.editor = {
-  select, startEdit, commitEdit, bindNodeEvents,
+  select, startEdit, commitEdit, flushCommit, bindNodeEvents,
   addText, addBlock, addImageFromSrc, duplicateEl, deleteEl, layerEl,
   addSlide, duplicateSlide, deleteSlide, gotoSlide,
   renderProps, scheduleThumbSave, pickImage, processFile,
-  openBgModal, removeBg, drawBgPreview, applyBgRemoval,
-  setTheme, applyThemeDom, openPresent, closePresent, togglePresentEdit, presentStep,
+  openBgModal, closeBgModal, removeBg, drawBgPreview, applyBgRemoval,
+  setTheme, openPresent, closePresent, togglePresentEdit, presentStep,
   init,
 };
 
