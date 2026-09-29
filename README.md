@@ -27,6 +27,34 @@ python3 -m http.server 8000
 ```
 index.html        — разметка приложения
 css/style.css     — обе темы (неон / жидкое стекло)
-js/app.js         — вся логика конструктора
+js/state.js       — данные: project → slides[] → elements[] (схема v2), фабрики, миграция v1
+js/storage.js     — автосохранение localStorage (rblx-pres-v2, миграция из rblx-pres-v1)
+js/render.js      — отрисовка: сцена, миниатюры, презентация, тулбар, тосты
+js/editor.js      — редактирование: выбор, правка, drag/resize, CRUD, свойства, темы, презентация, удаление фона
+js/export.js      — экспорт / импорт / сброс проекта (JSON)
+js/app.js         — точка входа: загрузка → тема → отрисовка → инициализация
 assets/img/       — иллюстрации для демо-слайдов
 ```
+
+## Данные (схема v2)
+
+```json
+{
+  "version": 2,
+  "theme": "neon",
+  "slides": [
+    {
+      "id": "…", "bg": "",
+      "elements": [
+        { "id": "…", "type": "text|image|block",
+          "x": 60, "y": 46, "w": 720, "h": 78,
+          "rotation": 0, "zIndex": 0,
+          "props": { "text": "…", "fontSize": 58, "…": "…" } }
+      ]
+    }
+  ]
+}
+```
+
+Геометрия (`x, y, w, h, rotation, zIndex`) — на уровне элемента, всё содержимое — в `props`.
+Старые сохранения (rblx-pres-v1, плоские элементы) мигрируют автоматически при загрузке.
