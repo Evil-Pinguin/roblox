@@ -1,0 +1,7 @@
+{
+  "name": "roblox-pres",
+  "private": true,
+  "description": "Конструктор-презентация — jsdom-тесты",
+  "scripts": { "test": "node tests/run-all.js" },
+  "devDependencies": { "jsdom": "^24.1.3" }
+}

@@ -454,22 +454,66 @@ button { font-family: var(--font); cursor: pointer; }
   pointer-events: none;
   -webkit-user-drag: none;
 }
+/* ---- ручки: 8 точек ресайза + поворот ---- */
 .el .handle {
   position: absolute;
-  right: -9px;
-  bottom: -9px;
-  width: 18px;
-  height: 18px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
   background: #fff;
-  border: 3px solid var(--accent);
-  box-shadow: 0 2px 8px rgba(0,0,0,.35);
-  cursor: nwse-resize;
+  border: 2.5px solid var(--accent);
+  box-shadow: 0 1px 4px rgba(0,0,0,.35);
+  box-sizing: border-box;
   display: none;
-  z-index: 5;
+  z-index: 6;
 }
-.el.selected .handle { display: block; }
-.el.text[contenteditable="true"] .handle { display: none; }
+.el.selected .handle,
+.el.selected .handle-rot { display: block; }
+/* во время правки текста ручки мешают → скрыты */
+.el.editing .handle,
+.el.editing .handle-rot { display: none; }
+
+.el .handle[data-dir="n"] { left: 50%; top: -6px;   transform: translateX(-50%); cursor: ns-resize; }
+.el .handle[data-dir="s"] { left: 50%; bottom: -6px; transform: translateX(-50%); cursor: ns-resize; }
+.el .handle[data-dir="e"] { right: -6px; top: 50%;  transform: translateY(-50%); cursor: ew-resize; }
+.el .handle[data-dir="w"] { left: -6px;  top: 50%;  transform: translateY(-50%); cursor: ew-resize; }
+.el .handle[data-dir="nw"] { left: -6px;  top: -6px;    cursor: nwse-resize; }
+.el .handle[data-dir="ne"] { right: -6px; top: -6px;    cursor: nesw-resize; }
+.el .handle[data-dir="se"] { right: -6px; bottom: -6px; cursor: nwse-resize; }
+.el .handle[data-dir="sw"] { left: -6px;  bottom: -6px; cursor: nesw-resize; }
+
+/* текст: вертикальных ручек нет — высота задаётся содержимым */
+.el.text .handle[data-dir="n"],
+.el.text .handle[data-dir="s"] { display: none; }
+
+/* поворот: ручка сверху на «стебле» */
+.el .handle-rot {
+  position: absolute;
+  left: 50%;
+  top: -36px;
+  transform: translateX(-50%);
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #fff;
+  border: 2.5px solid var(--accent);
+  box-shadow: 0 1px 4px rgba(0,0,0,.35);
+  box-sizing: border-box;
+  display: none;
+  z-index: 6;
+  cursor: grab;
+}
+.el .handle-rot::before {
+  content: '';
+  position: absolute;
+  left: 50%;
+  top: 11.5px;
+  transform: translateX(-50%);
+  width: 1.5px;
+  height: 24px;
+  background: var(--accent);
+}
+.el .handle-rot:active { cursor: grabbing; }
 
 /* карточка-подложка (тип «блок») */
 .el.block {

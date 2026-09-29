@@ -37,16 +37,18 @@ function syncChrome() {
   if (bm) bm.classList.toggle('hidden', !state.ui.bgModal);
 }
 
-/* ---------- текст узла без разрушения .handle ---------- */
+/* ---------- текст узла без разрушения ручек (.handle / .handle-rot) ---------- */
 function setTextSafe(div, text) {
   if (div.textContent === text) return;      // не трогаем активную правку
-  let handle = null;
+  const keeps = [];
   for (const ch of div.children) {
-    if (ch.classList && ch.classList.contains('handle')) { handle = ch; break; }
+    if (ch.classList && (ch.classList.contains('handle') || ch.classList.contains('handle-rot'))) {
+      keeps.push(ch);
+    }
   }
   div.textContent = '';
   div.appendChild(document.createTextNode(text));
-  if (handle) div.appendChild(handle);
+  for (const k of keeps) div.appendChild(k);
 }
 
 /* ---------- применить данные элемента к существующему узлу ---------- */
@@ -105,10 +107,18 @@ function buildNode(e, interactive) {
   }
 
   if (interactive) {
-    const h = document.createElement('div');
-    h.className = 'handle';
-    div.appendChild(h);
-    App.editor.bindNodeEvents(div, h, e);
+    // 8 точек ресайза
+    for (const dir of ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']) {
+      const h = document.createElement('div');
+      h.className = 'handle';
+      h.dataset.dir = dir;
+      div.appendChild(h);
+    }
+    // ручка поворота — сверху, на «стебле»
+    const rot = document.createElement('div');
+    rot.className = 'handle-rot';
+    div.appendChild(rot);
+    App.editor.bindNodeEvents(div, e);
   }
   return div;
 }

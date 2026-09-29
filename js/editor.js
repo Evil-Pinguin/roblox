@@ -92,24 +92,26 @@ function startEdit(id) {
 /* ============================================================
    DRAG / RESIZE
    ============================================================ */
-function bindNodeEvents(node, handle, ref) {
+function bindNodeEvents(node, ref) {
   // закрываемся только по id: после undo/redo (и импорта) project
   // заменяется новыми объектами, старые ссылки открепляются
   const id = ref.id;
+  const win = node.ownerDocument.defaultView || window;
+  const isHandleTarget = t =>
+    !!(t && t.classList && (t.classList.contains('handle') || t.classList.contains('handle-rot')));
 
   node.addEventListener('pointerdown', ev => {
     const e = findEl(id);
     if (!e) return;
     if (ev.button > 0) return;                // только левая кнопка
     if (state.ui.editingId === e.id) return;   // идёт редактирование текста
-    if (ev.target === handle) return;          // ресайз — отдельно
+    if (isHandleTarget(ev.target)) return;     // ресайз/поворот — отдельно
     ev.stopPropagation();
     if (state.ui.selected !== e.id) select(e.id);
 
     const startX = ev.clientX, startY = ev.clientY;
     const ox = e.x, oy = e.y;
     let moved = false;
-    const win = node.ownerDocument.defaultView || window;
     if (node.setPointerCapture && ev.pointerId != null) {
       try { node.setPointerCapture(ev.pointerId); } catch (_) {}
     }
@@ -150,55 +152,139 @@ function bindNodeEvents(node, handle, ref) {
     if (cur && cur.type === 'text') startEdit(cur.id);
   });
 
-  // ресайз
-  handle.addEventListener('pointerdown', ev => {
+  // ---- ресайз: 8 ручек ----
+  node.querySelectorAll('.handle[data-dir]').forEach(h => {
+    const dir = h.dataset.dir;
+    const hasW = dir.includes('w'), hasE = dir.includes('e');
+    const hasN = dir.includes('n'), hasS = dir.includes('s');
+    const vOnly = !hasW && !hasE;          // 'n' / 's'
+
+    h.addEventListener('pointerdown', ev => {
+      ev.stopPropagation();
+      ev.preventDefault();
+      if (ev.button > 0) return;           // только левая кнопка
+      const cur = findEl(id);
+      if (!cur) return;
+      if (state.ui.selected !== cur.id) select(cur.id);
+      const startX = ev.clientX, startY = ev.clientY;
+      const ox = cur.x, oy = cur.y, ow = cur.w, oh = cur.h || 0;
+      if (h.setPointerCapture && ev.pointerId != null) {
+        try { h.setPointerCapture(ev.pointerId); } catch (_) {}
+      }
+
+      const onMove = mv => {
+        const sc = gestureScale();
+        const dx = (mv.clientX - startX) / sc;
+        const dy = (mv.clientY - startY) / sc;
+        const live = elNode(id) || node;
+
+        if (cur.type === 'text') {
+          // текст живёт по ширине; n/s спрятаны CSS (высота — от содержимого)
+          if (vOnly) return;
+          let w = Math.round(Math.max(60, Math.min(SLIDE_W, hasW ? ow - dx : ow + dx)));
+          cur.w = w;
+          if (hasW) cur.x = ox + ow - w;
+          live.style.width = w + 'px';
+          live.style.left = cur.x + 'px';
+        } else if (cur.type === 'image') {
+          // пропорции сохраняем всегда; n/s задают высоту и центрируют по ширине
+          const ar = cur.props.ar || (ow / oh) || 1;
+          let w, hgt;
+          if (vOnly) {
+            hgt = Math.round(Math.max(40, Math.min(SLIDE_H, hasN ? oh - dy : oh + dy)));
+            w = Math.round(hgt * ar);
+            if (w < 60) { w = 60; hgt = Math.round(w / ar); }
+          } else {
+            w = Math.round(Math.max(60, Math.min(SLIDE_W, hasW ? ow - dx : ow + dx)));
+            hgt = Math.round(w / ar);
+            if (hgt < 40) { hgt = 40; w = Math.round(hgt * ar); }
+            if (hgt > SLIDE_H) { hgt = SLIDE_H; w = Math.round(hgt * ar); }
+          }
+          cur.w = w; cur.h = hgt;
+          if (vOnly) {
+            cur.x = ox + Math.round((ow - w) / 2);
+            cur.y = hasN ? oy + oh - hgt : oy;
+          } else {
+            cur.x = hasW ? ox + ow - w : ox;
+            cur.y = hasN ? oy + oh - hgt : oy;
+          }
+          live.style.left = cur.x + 'px';
+          live.style.top = cur.y + 'px';
+          live.style.width = w + 'px';
+          live.style.height = hgt + 'px';
+        } else {
+          // блок: ширина и высота независимо
+          if (hasW || hasE) {
+            cur.w = Math.round(Math.max(60, Math.min(SLIDE_W, hasW ? ow - dx : ow + dx)));
+            if (hasW) cur.x = ox + ow - cur.w;
+          }
+          if (hasN || hasS) {
+            cur.h = Math.round(Math.max(40, Math.min(SLIDE_H, hasN ? oh - dy : oh + dy)));
+            if (hasN) cur.y = oy + oh - cur.h;
+          }
+          live.style.left = cur.x + 'px';
+          live.style.top = cur.y + 'px';
+          live.style.width = cur.w + 'px';
+          live.style.height = cur.h + 'px';
+        }
+        R.positionToolbar();
+      };
+      const end = () => {
+        win.removeEventListener('pointermove', onMove);
+        win.removeEventListener('pointerup', end);
+        win.removeEventListener('pointercancel', end);
+        win.removeEventListener('lostpointercapture', end);
+        setState();   // коммит жеста — одна запись истории
+      };
+      win.addEventListener('pointermove', onMove);
+      win.addEventListener('pointerup', end);
+      win.addEventListener('pointercancel', end);
+      win.addEventListener('lostpointercapture', end);
+    });
+  });
+
+  // ---- поворот: ручка сверху ----
+  const rot = node.querySelector('.handle-rot');
+  if (rot) rot.addEventListener('pointerdown', ev => {
     ev.stopPropagation();
     ev.preventDefault();
-    if (ev.button > 0) return;                 // только левая кнопка
+    if (ev.button > 0) return;              // только левая кнопка
     const cur = findEl(id);
     if (!cur) return;
     if (state.ui.selected !== cur.id) select(cur.id);
-    const startX = ev.clientX, startY = ev.clientY;
-    const ow = cur.w, oh = cur.h || 0;
-    const win = handle.ownerDocument.defaultView || window;
-    if (handle.setPointerCapture && ev.pointerId != null) {
-      try { handle.setPointerCapture(ev.pointerId); } catch (_) {}
+    const live0 = elNode(id) || node;
+    const b = live0.getBoundingClientRect();
+    const cx = b.left + b.width / 2, cy = b.top + b.height / 2;
+    const a0 = Math.atan2(ev.clientY - cy, ev.clientX - cx);
+    const r0 = cur.rotation || 0;
+    if (rot.setPointerCapture && ev.pointerId != null) {
+      try { rot.setPointerCapture(ev.pointerId); } catch (_) {}
     }
+    let moved = false;
 
     const onMove = mv => {
-      const sc = gestureScale();
-      const dx = (mv.clientX - startX) / sc;
+      const a = Math.atan2(mv.clientY - cy, mv.clientX - cx);
+      let deg = Math.round(r0 + (a - a0) * 180 / Math.PI);
+      deg = ((deg % 360) + 360) % 360;      // → [0, 360)
+      if (deg > 180) deg -= 360;            // → (-180, 180]
+      if (deg === (cur.rotation || 0)) return;
+      moved = true;
+      cur.rotation = deg;
       const live = elNode(id) || node;
-      if (cur.type === 'text') {
-        cur.w = Math.round(Math.max(60, Math.min(SLIDE_W, ow + dx)));
-        live.style.width = cur.w + 'px';
-      } else if (cur.type === 'image') {
-        const nw = Math.round(Math.max(60, Math.min(SLIDE_W, ow + dx)));
-        const ar = cur.props.ar || (ow / oh) || 1;
-        cur.w = nw;
-        cur.h = Math.round(nw / ar);
-        live.style.width = cur.w + 'px';
-        live.style.height = cur.h + 'px';
-      } else {
-        const dy = (mv.clientY - startY) / sc;
-        cur.w = Math.round(Math.max(60, Math.min(SLIDE_W, ow + dx)));
-        cur.h = Math.round(Math.max(40, Math.min(SLIDE_H, oh + dy)));
-        live.style.width = cur.w + 'px';
-        live.style.height = cur.h + 'px';
-      }
+      live.style.transform = deg ? `rotate(${deg}deg)` : '';
       R.positionToolbar();
     };
-    const onUp = () => {
+    const end = () => {
       win.removeEventListener('pointermove', onMove);
-      win.removeEventListener('pointerup', onUp);
-      win.removeEventListener('pointercancel', onUp);
-      win.removeEventListener('lostpointercapture', onUp);
-      setState();   // коммит жеста
+      win.removeEventListener('pointerup', end);
+      win.removeEventListener('pointercancel', end);
+      win.removeEventListener('lostpointercapture', end);
+      if (moved) setState();   // коммит жеста — одна запись истории
     };
     win.addEventListener('pointermove', onMove);
-    win.addEventListener('pointerup', onUp);
-    win.addEventListener('pointercancel', onUp);
-    win.addEventListener('lostpointercapture', onUp);
+    win.addEventListener('pointerup', end);
+    win.addEventListener('pointercancel', end);
+    win.addEventListener('lostpointercapture', end);
   });
 }
 
