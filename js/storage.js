@@ -51,6 +51,7 @@ function load() {
       if (project) {
         App.state.project = project;
         App.state.ui.current = clamp(data.current || 0, project.slides.length);
+        App.resetHistory();          // базовая точка истории — загруженный проект
         return true;
       }
     }
@@ -62,10 +63,12 @@ function load() {
       if (project) {
         App.state.project = project;
         App.state.ui.current = clamp(old.current || 0, project.slides.length);
+        App.resetHistory();
         return true;
       }
     }
   } catch (err) { /* повреждённые данные — берём демо */ }
+  App.resetHistory(); // проект остался дефолтный — базовая точка истории
   return false;
 }
 
@@ -76,11 +79,21 @@ function clear() {
   } catch (_) {}
 }
 
+/* Закрытие/сворачивание вкладки: дописать отложенное сохранение сразу,
+   чтобы последние миллисекунды правок не потерялись. */
+function init() {
+  window.addEventListener('beforeunload', saveNow);
+  window.addEventListener('pagehide', saveNow);
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') saveNow();
+  });
+}
+
 function clamp(i, len) {
   if (!Number.isFinite(i)) return 0;
   return Math.max(0, Math.min(Math.round(i), len - 1));
 }
 
-App.storage = { save, saveNow, load, clear, STORE_KEY, STORE_KEY_V1 };
+App.storage = { save, saveNow, load, clear, init, STORE_KEY, STORE_KEY_V1 };
 
 })(window.App);

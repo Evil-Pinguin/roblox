@@ -86,8 +86,14 @@ function startEdit(id) {
 /* ============================================================
    DRAG / RESIZE
    ============================================================ */
-function bindNodeEvents(node, handle, e) {
+function bindNodeEvents(node, handle, ref) {
+  // закрываемся только по id: после undo/redo (и импорта) project
+  // заменяется новыми объектами, старые ссылки открепляются
+  const id = ref.id;
+
   node.addEventListener('pointerdown', ev => {
+    const e = findEl(id);
+    if (!e) return;
     if (state.ui.editingId === e.id) return;   // идёт редактирование текста
     if (ev.target === handle) return;          // ресайз — отдельно
     ev.stopPropagation();
@@ -125,7 +131,7 @@ function bindNodeEvents(node, handle, e) {
   // двойной клик — редактирование текста
   node.addEventListener('dblclick', ev => {
     ev.stopPropagation();
-    const cur = findEl(e.id);
+    const cur = findEl(id);
     if (cur && cur.type === 'text') startEdit(cur.id);
   });
 
@@ -133,8 +139,9 @@ function bindNodeEvents(node, handle, e) {
   handle.addEventListener('pointerdown', ev => {
     ev.stopPropagation();
     ev.preventDefault();
-    if (state.ui.selected !== e.id) select(e.id);
-    const cur = findEl(e.id);
+    const cur = findEl(id);
+    if (!cur) return;
+    if (state.ui.selected !== cur.id) select(cur.id);
     const startX = ev.clientX, startY = ev.clientY;
     const ow = cur.w, oh = cur.h || 0;
     if (handle.setPointerCapture && ev.pointerId != null) {
@@ -226,10 +233,10 @@ function addImageFromSrc(src, ar) {
 }
 
 function duplicateEl(id) {
-  const src = findEl(id);
-  if (!src) return;
   setState(() => {
     flushCommit();
+    const src = findEl(id);
+    if (!src) return;
     const copy = JSON.parse(JSON.stringify(src));
     copy.id = uid();
     copy.x += 28; copy.y += 28;
@@ -974,6 +981,23 @@ function bindPresent() {
 /* ============================================================
    КЛАВИАТУРА
    ============================================================ */
+/* Ctrl+Z / Ctrl+Y (и Ctrl+Shift+Z) — в полях ввода работает нативный undo */
+function tryUndoRedo(ev) {
+  if (!(ev.ctrlKey || ev.metaKey)) return false;
+  const k = ev.key.toLowerCase();
+  if (k === 'z' && !ev.shiftKey) {
+    ev.preventDefault();
+    if (!App.undo()) toast('Нечего отменять');
+    return true;
+  }
+  if (k === 'y' || (ev.shiftKey && k === 'z')) {
+    ev.preventDefault();
+    if (!App.redo()) toast('Нечего повторять');
+    return true;
+  }
+  return false;
+}
+
 function bindKeyboard() {
   document.addEventListener('keydown', ev => {
     const t = ev.target;
@@ -988,6 +1012,7 @@ function bindKeyboard() {
         if (ev.key === 'Escape') ev.target.blur();
         return;
       }
+      if (tryUndoRedo(ev)) return;
       if (ev.key === 'Escape') {
         ev.preventDefault();
         if (state.ui.selected) { select(null); return; }          // сначала снять выделение
@@ -1040,6 +1065,8 @@ function bindKeyboard() {
       if (ev.key === 'Escape') $('#bgCancel').click();
       return;
     }
+
+    if (tryUndoRedo(ev)) return;
 
     if (ev.key === 'Escape') { select(null); return; }
 

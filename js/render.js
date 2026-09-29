@@ -94,8 +94,10 @@ function buildNode(e, interactive) {
     const img = document.createElement('img');
     img.alt = '';
     img.addEventListener('load', () => {
-      if (!e.props.ar && img.naturalWidth) {
-        App.setState(() => { e.props.ar = img.naturalWidth / img.naturalHeight; });
+      if (!img.naturalWidth) return;
+      const cur = App.findEl(e.id);   // свежая ссылка: project мог замениться
+      if (cur && !cur.props.ar) {
+        App.setState(() => { cur.props.ar = img.naturalWidth / img.naturalHeight; });
       }
     });
     img.src = e.props.src;

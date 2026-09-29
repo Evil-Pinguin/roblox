@@ -124,19 +124,80 @@ const state = {
 };
 
 /* ============================================================
+   История undo/redo — стеки снимков ВНЕ state, чтобы снимки
+   не включали сами себя. Снимок = { p: JSON(project), c: current }.
+   ============================================================ */
+const HISTORY_MAX = 50;
+const past = [];    // снимки прошлых состояний project (для Ctrl+Z)
+const future = [];  // отменённые (для Ctrl+Y)
+let historyLock = false;      // undo/redo сами управляют стеками
+let lastCommitted = null;     // последний зафиксированный снимок
+
+function histSnap() {
+  return { p: JSON.stringify(state.project), c: state.ui.current };
+}
+
+function resetHistory() {
+  past.length = 0;
+  future.length = 0;
+  lastCommitted = histSnap();
+}
+
+const canUndo = () => past.length > 0;
+const canRedo = () => future.length > 0;
+
+function restoreSnapshot(snap) {
+  state.project = JSON.parse(snap.p);
+  state.ui.current = Math.max(0, Math.min(snap.c, state.project.slides.length - 1));
+  state.ui.selected = null;
+  state.ui.editingId = null;
+}
+
+function undo() {
+  if (!past.length) return false;
+  const target = past.pop();
+  future.push(histSnap());
+  historyLock = true;
+  try { setState(() => restoreSnapshot(target)); }
+  finally { historyLock = false; }
+  return true;
+}
+
+function redo() {
+  if (!future.length) return false;
+  const target = future.pop();
+  past.push(histSnap());
+  historyLock = true;
+  try { setState(() => restoreSnapshot(target)); }
+  finally { historyLock = false; }
+  return true;
+}
+
+/* ============================================================
    setState() — ЕДИНСТВЕННАЯ точка изменения состояния.
-   Любое изменение: setState(mutator) → мутация → перерисовка
-   (renderAll, включая chrome: тема, презентация, модалка фона) →
-   автосохранение. Мутации state в обход setState запрещены;
-   исключение — «живой предпросмотр» внутри жестов (drag/resize,
-   слайдеры, ввод текста): он пишет сразу, а коммит жеста идёт
-   через setState.
+   Любое изменение: setState(mutator) → мутация → снимок в
+   историю (если изменился project) → перерисовка (renderAll,
+   включая chrome) → автосохранение.
+   «Живой предпросмотр» внутри жестов (drag/resize, слайдеры,
+   ввод текста) пишет сразу, а коммит жеста идёт через setState —
+   снимок сравнивается с lastCommitted, поэтому вся правка жеста
+   становится одной записью истории.
    ============================================================ */
 function setState(mutator) {
+  const before = lastCommitted || histSnap();
   if (typeof mutator === 'function') mutator(state);
+  const after = histSnap();
+  if (!historyLock && after.p !== before.p) {
+    past.push(before);
+    if (past.length > HISTORY_MAX) past.shift();
+    future.length = 0;
+  }
+  lastCommitted = after;
   App.render.renderAll();
   App.storage.save();
 }
+
+lastCommitted = histSnap();
 
 /* ---------- доступ ---------- */
 const slideOf = () => state.project.slides[state.ui.current];
@@ -206,6 +267,11 @@ function remapTextColors(theme) {
 
 App.state = state;
 App.setState = setState;
+App.undo = undo;
+App.redo = redo;
+App.canUndo = canUndo;
+App.canRedo = canRedo;
+App.resetHistory = resetHistory;
 App.SLIDE_W = SLIDE_W;
 App.SLIDE_H = SLIDE_H;
 App.uid = uid;

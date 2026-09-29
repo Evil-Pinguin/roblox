@@ -8,7 +8,8 @@ window.App = window.App || {};
 (function (App) {
 'use strict';
 
-App.storage.load();          // v2 → v1 → демо
+App.storage.load();          // v2 → v1 → демо (загрузка при старте)
+App.storage.init();           // дописать сохранение при закрытии вкладки
 App.editor.init();           // кнопки, темы, клавиатура, презентация, файлы
 App.exporter.init();         // экспорт / импорт / сброс
 App.render.renderAll();      // первый рендер (включая chrome: тема и т.д.)
