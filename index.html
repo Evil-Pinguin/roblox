@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RBLX Презентации — конструктор слайдов</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖼️</text></svg>">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body data-theme="neon">
+
+  <!-- ======== Верхняя панель ======== -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-logo">▣</span>
+      <span class="brand-name">RBLX<b>Презентации</b></span>
+      <span class="brand-chip">день 1</span>
+    </div>
+
+    <div class="segmented" id="themeSwitch" title="Стиль оформления">
+      <button data-theme="neon" class="active">⚡ Неон</button>
+      <button data-theme="glass">◈ Жидкое стекло</button>
+    </div>
+
+    <div class="topbar-actions">
+      <button class="btn ghost" id="btnExport" title="Скачать проект как JSON">⇩ Экспорт</button>
+      <button class="btn primary" id="btnPresent" title="Начать презентацию (F5)">▶ Презентация</button>
+    </div>
+  </header>
+
+  <!-- ======== Рабочая область ======== -->
+  <div class="workspace">
+
+    <!-- Левая панель: слайды -->
+    <aside class="side-panel left">
+      <div class="panel-head">Слайды</div>
+      <div class="slides-list" id="slidesList"></div>
+      <button class="btn dashed wide" id="btnAddSlide">＋ Новый слайд</button>
+      <div class="panel-foot">
+        <button class="btn mini" id="btnImport" title="Загрузить проект из JSON">⇩ Импорт</button>
+        <button class="btn mini danger" id="btnReset" title="Сбросить всё к началу">⟲ Сброс</button>
+      </div>
+    </aside>
+
+    <!-- Сцена -->
+    <main class="stage-area" id="stageArea">
+      <div class="stage" id="stage">
+        <div class="slide" id="slide"></div>
+      </div>
+      <div class="hint">Двойной клик по тексту — редактировать · Del — удалить · Ctrl+D — дублировать · ← → — сдвиг</div>
+    </main>
+
+    <!-- Правая панель: свойства -->
+    <aside class="side-panel right" id="propsPanel"></aside>
+  </div>
+
+  <!-- Плавающая панель действий над выбранным элементом -->
+  <div class="el-toolbar hidden" id="elToolbar">
+    <button data-act="up" title="На передний план">⤒</button>
+    <button data-act="down" title="Отправить назад">⤓</button>
+    <button data-act="dup" title="Дублировать (Ctrl+D)">⧉</button>
+    <button data-act="bg" class="bg-act" title="Удалить фон фотографии">✨ Фон</button>
+    <button data-act="del" class="danger" title="Удалить (Del)">🗑</button>
+  </div>
+
+  <!-- ======== Режим презентации ======== -->
+  <div class="present hidden" id="present">
+    <div class="present-stage" id="presentStage"></div>
+    <div class="present-controls">
+      <button id="pPrev">‹</button>
+      <span id="pCounter">1 / 1</span>
+      <button id="pNext">›</button>
+      <button id="pClose" title="Выйти (Esc)">✕</button>
+    </div>
+  </div>
+
+  <!-- ======== Модалка «Удалить фон» ======== -->
+  <div class="modal-back hidden" id="bgModal">
+    <div class="modal">
+      <div class="modal-title">✨ Удаление фона</div>
+      <div class="modal-body">
+        <div class="bg-preview-wrap"><canvas id="bgPreview"></canvas></div>
+        <label class="slider-row">
+          <span>Чувствительность</span>
+          <input type="range" id="bgTolerance" min="5" max="95" value="40">
+          <output id="bgToleranceOut">40</output>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" id="bgFeather" checked>
+          <span>Сглаживать края</span>
+        </label>
+        <p class="modal-note">Алгоритм выделяет фон от краёв снимка. Лучше всего работает на фото с однородным фоном.</p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="bgCancel">Отмена</button>
+        <button class="btn primary" id="bgApply">Применить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- скрытые инпуты -->
+  <input type="file" id="fileImage" accept="image/*" hidden>
+  <input type="file" id="fileBgImage" accept="image/*" hidden>
+  <input type="file" id="fileImport" accept="application/json,.json" hidden>
+
+  <script src="js/app.js"></script>
+</body>
+</html>
