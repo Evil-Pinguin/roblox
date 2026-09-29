@@ -52,11 +52,25 @@ const state = {
 };
 
 let editingId = null;   // элемент, который сейчас редактируется текстом
-let scale = 1;          // масштаб сцены 1280×720 → экран
+let scale = 1;          // масштаб сцены 1280×720 → экран (редактор)
+let presentEdit = false; // режим редактирования внутри презентации
+let presentScale = 1;    // масштаб слайда в режиме презентации
 let saveTimer = null;
 
 const slideOf = () => state.slides[state.current];
 const findEl  = id => slideOf().elements.find(e => e.id === id);
+
+/* узел элемента в той панели, которая сейчас видима: презентация или редактор */
+function elNode(id) {
+  const pOpen = !$('#present').classList.contains('hidden');
+  const scope = pOpen ? '#presentStage' : '#stage';
+  return document.querySelector(`${scope} .el[data-id="${id}"]`);
+}
+
+/* актуальный масштаб для перетаскивания */
+function activeScale() {
+  return $('#present').classList.contains('hidden') ? scale : presentScale;
+}
 
 /* ------------------------------------------------------------
    Персистентность
@@ -251,7 +265,7 @@ function renderThumbs() {
 function select(id) {
   if (editingId && editingId !== id) commitEdit();
   state.selected = id;
-  $$('#slideViewport .el, .stage .el').forEach(n => {
+  $$('#stage .el, #presentStage .el').forEach(n => {
     n.classList.toggle('selected', n.dataset.id === id);
   });
   renderProps();
@@ -261,11 +275,13 @@ function select(id) {
 function positionToolbar() {
   const bar = $('#elToolbar');
   const id = state.selected;
-  if (!id || editingId === id || $('#present').classList.contains('hidden') === false) {
+  const pOpen = !$('#present').classList.contains('hidden');
+  // в презентации панель видна только в режиме редактирования
+  if (!id || editingId === id || (pOpen && !presentEdit)) {
     bar.classList.add('hidden');
     return;
   }
-  const node = document.querySelector(`.stage .el[data-id="${id}"]`);
+  const node = elNode(id);
   if (!node) { bar.classList.add('hidden'); return; }
   const e = findEl(id);
   bar.classList.remove('hidden');
@@ -283,7 +299,7 @@ function positionToolbar() {
 function startEdit(id) {
   const e = findEl(id);
   if (!e || e.type !== 'text') return;
-  const node = document.querySelector(`.stage .el[data-id="${id}"]`);
+  const node = elNode(id);
   if (!node) return;
   editingId = id;
   node.classList.add('editing');
@@ -308,7 +324,7 @@ function startEdit(id) {
 function commitEdit() {
   if (!editingId) return;
   const id = editingId;
-  const node = document.querySelector(`.stage .el[data-id="${id}"]`);
+  const node = elNode(id);
   const e = findEl(id);
   editingId = null;
   if (node) {
@@ -342,8 +358,8 @@ function bindNodeEvents(node, handle, e) {
     }
 
     const onMove = mv => {
-      const dx = (mv.clientX - startX) / scale;
-      const dy = (mv.clientY - startY) / scale;
+      const dx = (mv.clientX - startX) / activeScale();
+      const dy = (mv.clientY - startY) / activeScale();
       if (!moved && Math.hypot(dx, dy) < 2) return;
       moved = true;
       const nw = e.type === 'text' ? e.w : e.w;
@@ -382,7 +398,7 @@ function bindNodeEvents(node, handle, e) {
     }
 
     const onMove = mv => {
-      const dx = (mv.clientX - startX) / scale;
+      const dx = (mv.clientX - startX) / activeScale();
       if (cur.type === 'text') {
         cur.w = Math.round(Math.max(60, Math.min(SLIDE_W, ow + dx)));
         node.style.width = cur.w + 'px';
@@ -394,8 +410,8 @@ function bindNodeEvents(node, handle, e) {
         node.style.width  = cur.w + 'px';
         node.style.height = cur.h + 'px';
       } else {
-        const dxs = (mv.clientX - startX) / scale;
-        const dys = (mv.clientY - startY) / scale;
+        const dxs = (mv.clientX - startX) / activeScale();
+        const dys = (mv.clientY - startY) / activeScale();
         cur.w = Math.round(Math.max(60, Math.min(SLIDE_W, ow + dxs)));
         cur.h = Math.round(Math.max(40, Math.min(SLIDE_H, oh + dys)));
         node.style.width  = cur.w + 'px';
@@ -664,7 +680,7 @@ function renderTextProps(panel, e) {
   ta.value = e.text;
   ta.addEventListener('input', () => {
     e.text = ta.value;
-    const node = document.querySelector(`.stage .el[data-id="${e.id}"]`);
+    const node = elNode(e.id);
     if (node) node.textContent = e.text;
     scheduleThumbSave();
   });
@@ -699,7 +715,7 @@ function renderTextProps(panel, e) {
 }
 
 function applyTextStyle(e) {
-  const node = document.querySelector(`.stage .el[data-id="${e.id}"]`);
+  const node = elNode(e.id);
   if (node && node) {
     node.style.fontSize = e.fontSize + 'px';
     node.style.color = e.color;
@@ -747,7 +763,7 @@ function renderImageProps(panel, e) {
       </div>
     </div>`;
 
-  const nodeOf = () => document.querySelector(`.stage .el[data-id="${e.id}"]`);
+  const nodeOf = () => elNode(e.id);
 
   panel.querySelector('#pReplace').onclick = () => pickImage(true, e.id);
   panel.querySelector('#pBg').onclick = () => openBgModal(e.id);
@@ -800,7 +816,7 @@ function renderBlockProps(panel, e) {
       </div>
     </div>`;
 
-  const nodeOf = () => document.querySelector(`.stage .el[data-id="${e.id}"]`);
+  const nodeOf = () => elNode(e.id);
   panel.querySelector('#pFill').oninput = ev => {
     e.fill = ev.target.value;
     const n = nodeOf(); if (n) n.style.background = e.fill;
@@ -1106,46 +1122,100 @@ $('#themeSwitch').addEventListener('click', ev => {
 /* ------------------------------------------------------------
    Презентация
 ------------------------------------------------------------ */
-let pIndex = 0;
 
 function openPresent() {
   commitEdit();
-  pIndex = state.current;
+  select(null);
   $('#present').classList.remove('hidden');
   renderPresent();
+  toast('Клик — дальше, ✏️ — редактировать прямо здесь, Esc — выход');
 }
 function closePresent() {
+  commitEdit();
+  if (presentEdit) {
+    presentEdit = false;
+    $('#present').classList.remove('edit');
+    $('#pEdit').classList.remove('active');
+    document.body.classList.remove('present-edit');
+  }
   $('#present').classList.add('hidden');
   $('#presentStage').innerHTML = '';
+  state.selected = null;
+  renderAll();
+  save();
 }
+
+/* вкл/выкл режима редактирования прямо в презентации */
+function togglePresentEdit() {
+  presentEdit = !presentEdit;
+  if (!presentEdit) {
+    commitEdit();
+    state.selected = null;
+  }
+  $('#present').classList.toggle('edit', presentEdit);
+  $('#pEdit').classList.toggle('active', presentEdit);
+  document.body.classList.toggle('present-edit', presentEdit);
+  renderPresent();
+  if (presentEdit) {
+    toast('✏️ Редактирование: клик — выбрать, двойной клик — правка текста');
+  } else {
+    toast('👀 Просмотр: клик — следующий слайд');
+  }
+}
+
 function renderPresent() {
-  const s = state.slides[pIndex];
+  const s = state.slides[state.current];
   const box = $('#presentStage');
   box.innerHTML = '';
   const vp = document.createElement('div');
   vp.className = 'slide-viewport';
   vp.style.position = 'relative';
   if (s.bg) vp.style.background = s.bg;
-  vp.appendChild(makeScaler(s, false));
+  vp.appendChild(makeScaler(s, presentEdit)); // интерактив — только в режиме редактирования
   box.appendChild(vp);
-  const sc = Math.min((window.innerWidth * 0.96) / SLIDE_W, (window.innerHeight * 0.92) / SLIDE_H);
+
+  // в режиме редактирования слайд вписывается между панелями конструктора
+  let padL = 0, padR = 0;
+  if (presentEdit) {
+    const lp = document.querySelector('.side-panel.left');
+    const rp = document.querySelector('.side-panel.right');
+    padL = lp && getComputedStyle(lp).display !== 'none' ? lp.offsetWidth : 0;
+    padR = rp && getComputedStyle(rp).display !== 'none' ? rp.offsetWidth : 0;
+  }
+  const availW = window.innerWidth - padL - padR;
+  const sc = Math.min((availW * 0.94) / SLIDE_W, (window.innerHeight * 0.88) / SLIDE_H);
+  presentScale = sc;
   vp.style.width  = Math.round(SLIDE_W * sc) + 'px';
   vp.style.height = Math.round(SLIDE_H * sc) + 'px';
   vp.querySelector('.slide-scaler').style.transform = `scale(${sc})`;
-  $('#pCounter').textContent = `${pIndex + 1} / ${state.slides.length}`;
+  // центрируем в зоне между панелями
+  box.style.transform = `translateX(${Math.round((padL - padR) / 2)}px)`;
+  $('#pCounter').textContent = `${state.current + 1} / ${state.slides.length}`;
+  positionToolbar();
 }
 function presentStep(d) {
-  const n = pIndex + d;
+  const n = state.current + d;
   if (n < 0 || n >= state.slides.length) return;
-  pIndex = n;
+  commitEdit();
+  state.current = n;   // редактор и поиск элементов всегда на том же слайде
+  state.selected = null;
   renderPresent();
+  renderThumbs();
+  save();
 }
 $('#btnPresent').addEventListener('click', openPresent);
 $('#pClose').addEventListener('click', closePresent);
 $('#pNext').addEventListener('click', () => presentStep(1));
 $('#pPrev').addEventListener('click', () => presentStep(-1));
+$('#pEdit').addEventListener('click', togglePresentEdit);
 $('#present').addEventListener('click', ev => {
-  if (ev.target.id === 'present' || ev.target.id === 'presentStage') presentStep(1);
+  if (ev.target.closest('.present-controls')) return;
+  if (presentEdit) {
+    // в режиме редактирования клик по пустому месту снимает выделение
+    if (!ev.target.closest('.el')) select(null);
+    return;
+  }
+  presentStep(1);
 });
 
 /* ------------------------------------------------------------
@@ -1198,12 +1268,54 @@ $('#btnReset').addEventListener('click', () => {
    Клавиатура
 ------------------------------------------------------------ */
 document.addEventListener('keydown', ev => {
-  const inField = ev.target.matches('input, textarea, select') ||
-                  ev.target.isContentEditable;
+  const t = ev.target;
+  const inField = !!(t && typeof t.matches === 'function' &&
+                     (t.matches('input, textarea, select') || t.isContentEditable));
 
   // режим презентации
   if (!$('#present').classList.contains('hidden')) {
-    if (ev.key === 'Escape') { closePresent(); ev.preventDefault(); }
+    if (ev.key === 'F5') { ev.preventDefault(); return; }
+    if (inField) {
+      // фокус в поле свойств справа — Esc просто снимает фокус
+      if (ev.key === 'Escape') ev.target.blur();
+      return;
+    }
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      if (state.selected) { select(null); return; }   // сначала снять выделение
+      if (presentEdit) { togglePresentEdit(); return; } // затем выйти из редактирования
+      closePresent();                                  // затем закрыть презентацию
+      return;
+    }
+
+    // редактирование: Delete / дублирование / сдвиг стрелками
+    if (presentEdit && state.selected) {
+      const id = state.selected;
+      const e = findEl(id);
+      if (e) {
+        if (ev.key === 'Delete' || ev.key === 'Backspace') {
+          ev.preventDefault(); deleteEl(id); return;
+        }
+        if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'd') {
+          ev.preventDefault(); duplicateEl(id); return;
+        }
+        if (ev.key.startsWith('Arrow')) {
+          ev.preventDefault();
+          const step = ev.shiftKey ? 20 : 4;
+          if (ev.key === 'ArrowLeft')  e.x -= step;
+          if (ev.key === 'ArrowRight') e.x += step;
+          if (ev.key === 'ArrowUp')    e.y -= step;
+          if (ev.key === 'ArrowDown')  e.y += step;
+          const node = elNode(id);
+          if (node) { node.style.left = e.x + 'px'; node.style.top = e.y + 'px'; }
+          positionToolbar();
+          scheduleThumbSave();
+          return;
+        }
+      }
+    }
+
+    // навигация по слайдам
     if (ev.key === 'ArrowRight' || ev.key === ' ' || ev.key === 'PageDown') { presentStep(1); ev.preventDefault(); }
     if (ev.key === 'ArrowLeft'  || ev.key === 'PageUp') { presentStep(-1); ev.preventDefault(); }
     return;
@@ -1243,7 +1355,7 @@ document.addEventListener('keydown', ev => {
     if (ev.key === 'ArrowRight') e.x += step;
     if (ev.key === 'ArrowUp')    e.y -= step;
     if (ev.key === 'ArrowDown')  e.y += step;
-    const node = document.querySelector(`.stage .el[data-id="${id}"]`);
+    const node = elNode(id);
     if (node) { node.style.left = e.x + 'px'; node.style.top = e.y + 'px'; }
     positionToolbar();
     scheduleThumbSave();
@@ -1255,6 +1367,7 @@ document.addEventListener('keydown', ev => {
 ------------------------------------------------------------ */
 function renderAll() {
   renderStage();
+  if (!$('#present').classList.contains('hidden')) renderPresent();
   renderThumbs();
   renderProps();
   positionToolbar();
@@ -1263,7 +1376,11 @@ function renderAll() {
 /* ------------------------------------------------------------
    Старт
 ------------------------------------------------------------ */
-window.addEventListener('resize', () => { fitStage(); positionToolbar(); });
+window.addEventListener('resize', () => {
+  if (!$('#present').classList.contains('hidden')) renderPresent();
+  else fitStage();
+  positionToolbar();
+});
 
 load();
 document.body.dataset.theme = state.theme;

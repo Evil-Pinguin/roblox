@@ -610,7 +610,21 @@ button { font-family: var(--font); cursor: pointer; }
   transition: background .15s;
 }
 .present-controls button:hover { background: rgba(255,255,255,.28); }
+.present-controls button.active {
+  background: var(--accent-grad);
+  color: #05030f;
+  box-shadow: 0 0 16px rgba(0,240,255,.55);
+}
+body[data-theme="glass"] .present-controls button.active { color: #fff; box-shadow: 0 0 16px rgba(10,132,255,.6); }
 .present-controls span { color: #fff; font-size: 13.5px; min-width: 52px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* Режим редактирования внутри презентации:
+   панели конструктора поднимаются над слайдом */
+body.present-edit .side-panel { z-index: 230; position: relative; }
+body.present-edit .side-panel.right { box-shadow: -18px 0 50px rgba(0,0,0,.35); }
+body.present-edit .side-panel.left  { box-shadow: 18px 0 50px rgba(0,0,0,.35); }
+body.present-edit .el-toolbar { z-index: 260; }
+body.present-edit .hint { display: none; }
 
 /* ---- Модалка ---- */
 .modal-back {
