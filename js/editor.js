@@ -29,6 +29,12 @@ const setTextSafe = R.setTextSafe;
    ВЫДЕЛЕНИЕ / ПРАВКА ТЕКСТА
    ============================================================ */
 
+/* масштаб для жестов: 0 / отрицательный / NaN → 1:1 */
+function gestureScale() {
+  const s = activeScale();
+  return Number.isFinite(s) && s > 0.02 ? s : 1;
+}
+
 /* запись правленого текста в модель — без рендера (для мутаторов) */
 function flushCommit() {
   if (!state.ui.editingId) return;
@@ -94,6 +100,7 @@ function bindNodeEvents(node, handle, ref) {
   node.addEventListener('pointerdown', ev => {
     const e = findEl(id);
     if (!e) return;
+    if (ev.button > 0) return;                // только левая кнопка
     if (state.ui.editingId === e.id) return;   // идёт редактирование текста
     if (ev.target === handle) return;          // ресайз — отдельно
     ev.stopPropagation();
@@ -102,14 +109,16 @@ function bindNodeEvents(node, handle, ref) {
     const startX = ev.clientX, startY = ev.clientY;
     const ox = e.x, oy = e.y;
     let moved = false;
+    const win = node.ownerDocument.defaultView || window;
     if (node.setPointerCapture && ev.pointerId != null) {
       try { node.setPointerCapture(ev.pointerId); } catch (_) {}
     }
 
     const onMove = mv => {
-      const dx = (mv.clientX - startX) / activeScale();
-      const dy = (mv.clientY - startY) / activeScale();
-      if (!moved && Math.hypot(dx, dy) < 2) return;
+      const sc = gestureScale();
+      const dx = (mv.clientX - startX) / sc;
+      const dy = (mv.clientY - startY) / sc;
+      if (!moved && Math.hypot(dx, dy) < 2) return;  // порог: клик ≠ перетаскивание
       moved = true;
       // живой предпросмотр внутри жеста (узел не пересоздаётся)
       e.x = Math.round(Math.max(-(e.w - 40), Math.min(SLIDE_W - 40, ox + dx)));
@@ -119,13 +128,19 @@ function bindNodeEvents(node, handle, ref) {
       live.style.top = e.y + 'px';
       R.positionToolbar();
     };
-    const onUp = () => {
-      node.removeEventListener('pointermove', onMove);
-      node.removeEventListener('pointerup', onUp);
-      if (moved) setState();   // коммит жеста
+    // слушаем на window: жест переживает выход курсора за пределы узла
+    // и окна (в браузере дополнительно помогает setPointerCapture)
+    const end = () => {
+      win.removeEventListener('pointermove', onMove);
+      win.removeEventListener('pointerup', end);
+      win.removeEventListener('pointercancel', end);
+      win.removeEventListener('lostpointercapture', end);
+      if (moved) setState();   // коммит жеста — одна запись истории
     };
-    node.addEventListener('pointermove', onMove);
-    node.addEventListener('pointerup', onUp);
+    win.addEventListener('pointermove', onMove);
+    win.addEventListener('pointerup', end);
+    win.addEventListener('pointercancel', end);
+    win.addEventListener('lostpointercapture', end);
   });
 
   // двойной клик — редактирование текста
@@ -139,18 +154,21 @@ function bindNodeEvents(node, handle, ref) {
   handle.addEventListener('pointerdown', ev => {
     ev.stopPropagation();
     ev.preventDefault();
+    if (ev.button > 0) return;                 // только левая кнопка
     const cur = findEl(id);
     if (!cur) return;
     if (state.ui.selected !== cur.id) select(cur.id);
     const startX = ev.clientX, startY = ev.clientY;
     const ow = cur.w, oh = cur.h || 0;
+    const win = handle.ownerDocument.defaultView || window;
     if (handle.setPointerCapture && ev.pointerId != null) {
       try { handle.setPointerCapture(ev.pointerId); } catch (_) {}
     }
 
     const onMove = mv => {
-      const dx = (mv.clientX - startX) / activeScale();
-      const live = elNode(e.id) || node;
+      const sc = gestureScale();
+      const dx = (mv.clientX - startX) / sc;
+      const live = elNode(id) || node;
       if (cur.type === 'text') {
         cur.w = Math.round(Math.max(60, Math.min(SLIDE_W, ow + dx)));
         live.style.width = cur.w + 'px';
@@ -162,7 +180,7 @@ function bindNodeEvents(node, handle, ref) {
         live.style.width = cur.w + 'px';
         live.style.height = cur.h + 'px';
       } else {
-        const dy = (mv.clientY - startY) / activeScale();
+        const dy = (mv.clientY - startY) / sc;
         cur.w = Math.round(Math.max(60, Math.min(SLIDE_W, ow + dx)));
         cur.h = Math.round(Math.max(40, Math.min(SLIDE_H, oh + dy)));
         live.style.width = cur.w + 'px';
@@ -171,12 +189,16 @@ function bindNodeEvents(node, handle, ref) {
       R.positionToolbar();
     };
     const onUp = () => {
-      handle.removeEventListener('pointermove', onMove);
-      handle.removeEventListener('pointerup', onUp);
+      win.removeEventListener('pointermove', onMove);
+      win.removeEventListener('pointerup', onUp);
+      win.removeEventListener('pointercancel', onUp);
+      win.removeEventListener('lostpointercapture', onUp);
       setState();   // коммит жеста
     };
-    handle.addEventListener('pointermove', onMove);
-    handle.addEventListener('pointerup', onUp);
+    win.addEventListener('pointermove', onMove);
+    win.addEventListener('pointerup', onUp);
+    win.addEventListener('pointercancel', onUp);
+    win.addEventListener('lostpointercapture', onUp);
   });
 }
 

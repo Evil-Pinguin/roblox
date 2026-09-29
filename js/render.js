@@ -193,7 +193,9 @@ function fitStage() {
   const area = $('#stageArea');
   const availW = area.clientWidth - 56;
   const availH = area.clientHeight - 76;
-  const scale = Math.min(availW / SLIDE_W, availH / SLIDE_H, 1.15);
+  let scale = Math.min(availW / SLIDE_W, availH / SLIDE_H, 1.15);
+  // крошечное/непоказанное окно → scale ≤ 0: drag и layout ломались
+  if (!Number.isFinite(scale) || scale < 0.05) scale = 0.05;
   state.ui.scale = scale;
   const w = Math.round(SLIDE_W * scale);
   const h = Math.round(SLIDE_H * scale);
@@ -287,7 +289,8 @@ function renderPresent() {
     padR = rp && getComputedStyle(rp).display !== 'none' ? rp.offsetWidth : 0;
   }
   const availW = window.innerWidth - padL - padR;
-  const k = Math.min((availW * 0.94) / SLIDE_W, (window.innerHeight * 0.88) / SLIDE_H);
+  let k = Math.min((availW * 0.94) / SLIDE_W, (window.innerHeight * 0.88) / SLIDE_H);
+  if (!Number.isFinite(k) || k < 0.05) k = 0.05;   // защита от вырожденного окна
   state.ui.presentScale = k;
   vp.style.width = Math.round(SLIDE_W * k) + 'px';
   vp.style.height = Math.round(SLIDE_H * k) + 'px';
