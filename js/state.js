@@ -10,6 +10,16 @@ window.App = window.App || {};
 const SLIDE_W = 1280;
 const SLIDE_H = 720;
 
+/* пресеты размеров слайда (п.28) */
+const SIZES = {
+  '16:9': [1280, 720],
+  '4:3': [1280, 960],
+  '1:1': [1000, 1000],
+  '9:16': [720, 1280],
+};
+function slideW() { return (state.project && state.project.width) || SLIDE_W; }
+function slideH() { return (state.project && state.project.height) || SLIDE_H; }
+
 let uidN = 1;
 const uid = () => 'u' + (uidN++) + Date.now().toString(36).slice(-4);
 
@@ -143,7 +153,7 @@ function makeElement(type, o = {}) {
 }
 
 function makeSlide(elements = [], bg = '') {
-  const slide = { id: uid(), bg, elements };
+  const slide = { id: uid(), bg, bgImage: '', elements };
   normalizeZ(slide);
   return slide;
 }
@@ -168,7 +178,7 @@ function defaultProject() {
     makeText({ x: 64, y: 620, w: 900, h: 26, text: 'Скачай бесплатно с roblox.com/create',
       fontSize: 18, weight: 500, italic: true, color: '#9beaff', opacity: 0.75 }),
   ]);
-  return { version: 2, theme: 'neon', slides: [s1, s2] };
+  return { version: 2, theme: 'neon', width: SLIDE_W, height: SLIDE_H, slides: [s1, s2] };
 }
 
 /* ---------- состояние приложения ---------- */
@@ -307,12 +317,17 @@ function normalizeProject(raw) {
   const slides = raw.slides.map(s => ({
     id: (s && s.id) || uid(),
     bg: (s && s.bg) || '',
+    bgImage: (s && s.bgImage) || '',
     elements: Array.isArray(s && s.elements) ? s.elements.map(normalizeElement) : [],
   }));
   slides.forEach(normalizeZ);
+  const w = Math.round(Number(raw.width)) || SLIDE_W;
+  const h = Math.round(Number(raw.height)) || SLIDE_H;
   return {
     version: 2,
     theme: raw.theme === 'glass' ? 'glass' : 'neon',
+    width: w > 100 ? w : SLIDE_W,
+    height: h > 100 ? h : SLIDE_H,
     slides,
   };
 }
@@ -324,6 +339,8 @@ function migrateProject(raw) {
   return normalizeProject({
     version: 2,
     theme: proj.theme,
+    width: proj.width,
+    height: proj.height,
     slides: proj.slides,
   });
 }
@@ -346,8 +363,11 @@ App.redo = redo;
 App.canUndo = canUndo;
 App.canRedo = canRedo;
 App.resetHistory = resetHistory;
-App.SLIDE_W = SLIDE_W;
+App.SLIDE_W = SLIDE_W;   /* база 16:9 (legacy) */
 App.SLIDE_H = SLIDE_H;
+App.slideW = slideW;     /* фактический размер слайда */
+App.slideH = slideH;
+App.SIZES = SIZES;
 App.uid = uid;
 App.slideOf = slideOf;
 App.findEl = findEl;

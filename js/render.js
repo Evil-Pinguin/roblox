@@ -10,8 +10,8 @@ window.App = window.App || {};
 'use strict';
 
 const state = App.state;
-const SLIDE_W = App.SLIDE_W;
-const SLIDE_H = App.SLIDE_H;
+const SW = () => App.slideW();
+const SH = () => App.slideH();
 
 const $  = s => document.querySelector(s);
 const $$ = s => Array.from(document.querySelectorAll(s));
@@ -313,6 +313,29 @@ function elNode(id) {
 }
 
 /* ---------- сцена редактора ---------- */
+/* единый фон слайда: картинка (обложка) поверх цвета/градиента (п.27) */
+function slideBgCss(s) {
+  if (!s) return '';
+  const grad = s.bg || '';
+  if (s.bgImage) return `url("${s.bgImage}") center / cover no-repeat${grad ? ', ' + grad : ''}`;
+  return grad;
+}
+
+/* применяем фон: цвет → backgroundColor, всё image-ное → backgroundImage
+   (надёжнее shorthand — один битый аргумент не обнуляет всё) */
+function applySlideBg(el, s) {
+  if (!el) return;
+  const grad = (s && s.bg) || '';
+  const isColor = /^(#[0-9a-fA-F]{3,8}|(rgb|hsl)a?\()/.test(grad);
+  if (s && s.bgImage) {
+    el.style.backgroundImage = `url("${s.bgImage}")${grad && !isColor ? ', ' + grad : ''}`;
+    el.style.backgroundColor = isColor ? grad : '';
+  } else {
+    el.style.backgroundImage = isColor ? '' : grad;
+    el.style.backgroundColor = isColor ? grad : '';
+  }
+}
+
 function renderStage() {
   const stage = $('#stage');
   const slide = App.slideOf();
@@ -340,7 +363,7 @@ function renderStage() {
     });
     stage.appendChild(vp);
   }
-  vp.style.background = slide.bg || '';
+  applySlideBg(vp, slide);
   fitStage();
 
   // синхронизация реальной высоты текста в модель (h в схеме v2)
@@ -358,16 +381,92 @@ function fitStage() {
   const availW = area.clientWidth - 32;
   const availH = area.clientHeight - 56;
   // без потолка 1.15: сцена занимает всю свободную зону на любых мониторах
-  let scale = Math.min(availW / SLIDE_W, availH / SLIDE_H);
+  let scale = Math.min(availW / SW(), availH / SH());
   // крошечное/непоказанное окно → scale ≤ 0: drag и layout ломались
   if (!Number.isFinite(scale) || scale < 0.05) scale = 0.05;
   state.ui.scale = scale;
-  const w = Math.round(SLIDE_W * scale);
-  const h = Math.round(SLIDE_H * scale);
+  const w = Math.round(SW() * scale);
+  const h = Math.round(SH() * scale);
   vp.style.width = w + 'px';
   vp.style.height = h + 'px';
   const sc = vp.querySelector('.slide-scaler');
   if (sc) sc.style.transform = `scale(${scale})`;
+}
+
+/* ---------- drag&drop порядка слайдов (п.26) ---------- */
+let dnd = null;            // { from, startY, moved, boundary }
+let dndSuppressClick = false;
+let dndBound = false;
+
+/* граница вставки 0..n по clientY: верхняя половина item → граница до него, нижняя → после */
+function dndBoundaryAt(clientY, list) {
+  const items = Array.from(list.querySelectorAll('.slide-item'));
+  if (!items.length) return null;
+  const lr = list.getBoundingClientRect();
+  const h0 = items[0].getBoundingClientRect().height;
+  if (!(h0 > 0)) return null;
+  const rel = clientY - lr.top;
+  if (rel < 0) return 0;
+  const i = Math.floor(rel / h0);
+  if (i >= items.length) return items.length;
+  const r = items[i].getBoundingClientRect();
+  return clientY < r.top + r.height / 2 ? i : i + 1;
+}
+
+function dndPaint(list, boundary) {
+  const items = list.querySelectorAll('.slide-item');
+  items.forEach(el => el.classList.remove('drop-before', 'drop-after'));
+  if (boundary == null || !items.length) return;
+  if (boundary >= items.length) items[items.length - 1].classList.add('drop-after');
+  else items[boundary].classList.add('drop-before');
+}
+
+function bindSlideDnd() {
+  const list = $('#slidesList');
+  if (!list || dndBound) return;
+  dndBound = true;
+  list.addEventListener('pointerdown', ev => {
+    if (ev.button != null && ev.button !== 0) return;
+    if (ev.target.closest('.slide-item-actions')) return;
+    const item = ev.target.closest('.slide-item');
+    if (!item) return;
+    const from = +item.dataset.i;
+    if (!Number.isInteger(from) || from < 0) return;
+    dnd = { from, startY: ev.clientY, moved: false, boundary: null };
+    dndSuppressClick = false;
+    ev.preventDefault();
+
+    const onMove = e => {
+      if (!dnd) return;
+      if (!dnd.moved) {
+        if (Math.abs(e.clientY - dnd.startY) < 4) return;
+        dnd.moved = true;
+        item.classList.add('dragging');
+      }
+      const b = dndBoundaryAt(e.clientY, list);
+      if (b == null) return;
+      dnd.boundary = b;
+      dndPaint(list, b);
+    };
+    const onUp = () => {
+      document.removeEventListener('pointermove', onMove);
+      document.removeEventListener('pointerup', onUp);
+      if (!dnd) return;
+      const { from, moved, boundary } = dnd;
+      dnd = null;
+      item.classList.remove('dragging');
+      dndPaint(list, null);
+      if (moved) {
+        dndSuppressClick = true;
+        if (boundary != null) {
+          const pos = boundary > from ? boundary - 1 : boundary;
+          if (pos !== from && App.editor.moveSlide) App.editor.moveSlide(from, pos);
+        }
+      }
+    };
+    document.addEventListener('pointermove', onMove);
+    document.addEventListener('pointerup', onUp);
+  });
 }
 
 /* ---------- миниатюры слайдов ---------- */
@@ -378,13 +477,17 @@ function renderThumbs() {
   state.project.slides.forEach((s, i) => {
     const item = document.createElement('div');
     item.className = 'slide-item';
+    item.dataset.i = i;
 
     const thumb = document.createElement('div');
     thumb.className = 'thumb' + (i === state.ui.current ? ' active' : '');
-    if (s.bg) thumb.style.background = s.bg;
+    applySlideBg(thumb, s);
 
     const inner = document.createElement('div');
     inner.className = 'thumb-inner';
+    inner.style.width = SW() + 'px';
+    inner.style.height = SH() + 'px';
+    thumb.style.aspectRatio = `${SW()} / ${SH()}`;
     inner.appendChild(makeScaler(s, false));
     thumb.appendChild(inner);
 
@@ -406,12 +509,15 @@ function renderThumbs() {
     });
     item.appendChild(acts);
 
-    thumb.addEventListener('click', () => App.editor.gotoSlide(i));
+    thumb.addEventListener('click', () => {
+      if (dndSuppressClick) { dndSuppressClick = false; return; }
+      App.editor.gotoSlide(i);
+    });
 
     item.insertBefore(thumb, acts);
     list.appendChild(item);
 
-    const k = thumb.clientWidth / SLIDE_W;
+    const k = thumb.clientWidth / SW();
     inner.style.transform = `scale(${k})`;
   });
 }
@@ -443,7 +549,7 @@ function renderPresent() {
     vp.appendChild(sc);
     box.appendChild(vp);
   }
-  vp.style.background = s.bg || '';
+  applySlideBg(vp, s);
 
   // в режиме правки слайд вписывается между панелями конструктора
   let padL = 0, padR = 0;
@@ -454,11 +560,11 @@ function renderPresent() {
     padR = rp && getComputedStyle(rp).display !== 'none' ? rp.offsetWidth : 0;
   }
   const availW = window.innerWidth - padL - padR;
-  let k = Math.min((availW * 0.94) / SLIDE_W, (window.innerHeight * 0.88) / SLIDE_H);
+  let k = Math.min((availW * 0.94) / SW(), (window.innerHeight * 0.88) / SH());
   if (!Number.isFinite(k) || k < 0.05) k = 0.05;   // защита от вырожденного окна
   state.ui.presentScale = k;
-  vp.style.width = Math.round(SLIDE_W * k) + 'px';
-  vp.style.height = Math.round(SLIDE_H * k) + 'px';
+  vp.style.width = Math.round(SW() * k) + 'px';
+  vp.style.height = Math.round(SH() * k) + 'px';
   sc.style.transform = `scale(${k})`;
   // центрируем в зоне между панелями
   box.style.transform = `translateX(${Math.round((padL - padR) / 2)}px)`;
@@ -522,7 +628,7 @@ function renderAll() {
 App.render = {
   $, $$, buildNode, makeScaler, refreshNodes, syncChrome, setTextSafe, applyElStyles,
   ICONS, STICKERS, iconSvg, imageFilter, applyCropToImg,
-  renderStage, fitStage, renderThumbs, renderPresent,
+  renderStage, fitStage, renderThumbs, renderPresent, slideBgCss, bindSlideDnd,
   positionToolbar, elNode, activeScale, presentOpen,
   toast, renderAll,
 };

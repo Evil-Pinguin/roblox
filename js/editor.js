@@ -10,8 +10,8 @@ window.App = window.App || {};
 'use strict';
 
 const state = App.state;
-const SLIDE_W = App.SLIDE_W;
-const SLIDE_H = App.SLIDE_H;
+const SW = () => App.slideW();
+const SH = () => App.slideH();
 const uid = App.uid;
 const slideOf = App.slideOf;
 const findEl = App.findEl;
@@ -263,8 +263,8 @@ function pasteSel() {
     clipboard.forEach((src, i) => {
       const c = JSON.parse(JSON.stringify(src));
       c.id = uid();
-      c.x = Math.max(-(c.w - 40), Math.min(SLIDE_W - 40, src.x + 16));
-      c.y = Math.max(-20, Math.min(SLIDE_H - 30, src.y + 16));
+      c.x = Math.max(-(c.w - 40), Math.min(SW() - 40, src.x + 16));
+      c.y = Math.max(-20, Math.min(SH() - 30, src.y + 16));
       c.zIndex = topZ + 1 + i;
       arr.push(c);
       pasted.push(c.id);
@@ -424,8 +424,8 @@ function bindNodeEvents(node, ref) {
     /* ---- привязка: центр слайда, края/центры других элементов ---- */
     const SNAP_R = 6;                       // радиус захвата, экранных px
     const th = SNAP_R / gestureScale();     // в координатах слайда
-    const targetsX = [0, SLIDE_W / 2, SLIDE_W];
-    const targetsY = [0, SLIDE_H / 2, SLIDE_H];
+    const targetsX = [0, SW() / 2, SW()];
+    const targetsY = [0, SH() / 2, SH()];
     const memberSet = new Set(starts.map(s => s.id));
     for (const o of slideOf().elements) {
       if (memberSet.has(o.id)) continue;
@@ -454,8 +454,8 @@ function bindNodeEvents(node, ref) {
       for (const s of starts) {
         const m = findEl(s.id);
         if (!m) continue;
-        m.x = Math.round(Math.max(-(s.w - 40), Math.min(SLIDE_W - 40, s.x + dx)));
-        m.y = Math.round(Math.max(-20, Math.min(SLIDE_H - 30, s.y + dy)));
+        m.x = Math.round(Math.max(-(s.w - 40), Math.min(SW() - 40, s.x + dx)));
+        m.y = Math.round(Math.max(-20, Math.min(SH() - 30, s.y + dy)));
       }
       // привязка по анкору (элементу, за который тянут)
       const ae = findEl(e.id);
@@ -564,7 +564,7 @@ function bindNodeEvents(node, ref) {
         if (cur.type === 'text') {
           // текст живёт по ширине; n/s спрятаны CSS (высота — от содержимого)
           if (vOnly) return;
-          let w = Math.round(Math.max(60, Math.min(SLIDE_W, hasW ? ow - dx : ow + dx)));
+          let w = Math.round(Math.max(60, Math.min(SW(), hasW ? ow - dx : ow + dx)));
           cur.w = w;
           if (hasW) cur.x = ox + ow - w;
           live.style.width = w + 'px';
@@ -574,14 +574,14 @@ function bindNodeEvents(node, ref) {
           const ar = cur.props.ar || (ow / oh) || 1;
           let w, hgt;
           if (vOnly) {
-            hgt = Math.round(Math.max(40, Math.min(SLIDE_H, hasN ? oh - dy : oh + dy)));
+            hgt = Math.round(Math.max(40, Math.min(SH(), hasN ? oh - dy : oh + dy)));
             w = Math.round(hgt * ar);
             if (w < 60) { w = 60; hgt = Math.round(w / ar); }
           } else {
-            w = Math.round(Math.max(60, Math.min(SLIDE_W, hasW ? ow - dx : ow + dx)));
+            w = Math.round(Math.max(60, Math.min(SW(), hasW ? ow - dx : ow + dx)));
             hgt = Math.round(w / ar);
             if (hgt < 40) { hgt = 40; w = Math.round(hgt * ar); }
-            if (hgt > SLIDE_H) { hgt = SLIDE_H; w = Math.round(hgt * ar); }
+            if (hgt > SH()) { hgt = SH(); w = Math.round(hgt * ar); }
           }
           cur.w = w; cur.h = hgt;
           if (vOnly) {
@@ -598,11 +598,11 @@ function bindNodeEvents(node, ref) {
         } else {
           // блок: ширина и высота независимо
           if (hasW || hasE) {
-            cur.w = Math.round(Math.max(60, Math.min(SLIDE_W, hasW ? ow - dx : ow + dx)));
+            cur.w = Math.round(Math.max(60, Math.min(SW(), hasW ? ow - dx : ow + dx)));
             if (hasW) cur.x = ox + ow - cur.w;
           }
           if (hasN || hasS) {
-            cur.h = Math.round(Math.max(40, Math.min(SLIDE_H, hasN ? oh - dy : oh + dy)));
+            cur.h = Math.round(Math.max(40, Math.min(SH(), hasN ? oh - dy : oh + dy)));
             if (hasN) cur.y = oy + oh - cur.h;
           }
           live.style.left = cur.x + 'px';
@@ -738,7 +738,8 @@ function addShape(kind) {
 }
 
 /* Библиотека иконок и стикеров (Этап 3.22) */
-let libTab = 'icon';   // какая вкладка открыта в панели добавления
+let libTab = 'icon';
+let bgTab = 'grad';   // фон слайда: color | grad | pic (п.27)   // какая вкладка открыта в панели добавления
 
 function addIcon(name) {
   const e = App.makeIcon({
@@ -880,6 +881,44 @@ function gotoSlide(i) {
   });
 }
 
+/* перетаскивание миниатюр (п.26): from → pos */
+function moveSlide(from, pos) {
+  const slides = state.project.slides;
+  if (from === pos || from < 0 || from >= slides.length ||
+      pos < 0 || pos >= slides.length) return;
+  setState(() => {
+    flushCommit();
+    const curId = slides[state.ui.current] && slides[state.ui.current].id;
+    const [it] = slides.splice(from, 1);
+    slides.splice(pos, 0, it);
+    const k = slides.findIndex(s => s.id === curId);
+    state.ui.current = k >= 0 ? k : state.ui.current;
+  });
+  toast(`Слайд → ${pos + 1}`);
+}
+
+/* формат слайда (п.28): 16:9 / 4:3 / 1:1 / 9:16 — элементы масштабируются */
+function setSlideSize(key) {
+  const dim = App.SIZES[key];
+  if (!dim) return;
+  const [w, h] = dim;
+  const p = state.project;
+  if (p.width === w && p.height === h) return;
+  setState(() => {
+    flushCommit();
+    const sx = w / p.width, sy = h / p.height;
+    p.slides.forEach(s => s.elements.forEach(el => {
+      el.x = Math.round(el.x * sx);
+      el.w = Math.max(20, Math.round(el.w * sx));
+      el.y = Math.round(el.y * sy);
+      el.h = Math.max(20, Math.round(el.h * sy));
+    }));
+    p.width = w;
+    p.height = h;
+  });
+  toast(`Формат слайда ${key}`);
+}
+
 /* ============================================================
    ПАНЕЛЬ СВОЙСТВ
    ============================================================ */
@@ -983,11 +1022,41 @@ function renderBaseProps(panel) {
     </div>
 
     <div class="prop-group">
+      <div class="prop-group-title">Формат слайда</div>
+      <div class="seg-group" id="sizeSeg">
+        ${Object.keys(App.SIZES).map(k => {
+          const d = App.SIZES[k];
+          const act = state.project.width === d[0] && state.project.height === d[1];
+          return `<button class="seg-btn ${act ? 'active' : ''}" data-size="${k}" title="${d[0]}×${d[1]}">${k}</button>`;
+        }).join('')}
+      </div>
+    </div>
+
+    <div class="prop-group">
       <div class="prop-group-title">Фон слайда</div>
+      <div class="seg-group" id="bgTabs">
+        <button class="seg-btn ${bgTab === 'color' ? 'active' : ''}" data-bgt="color">Цвет</button>
+        <button class="seg-btn ${bgTab === 'grad' ? 'active' : ''}" data-bgt="grad">Градиент</button>
+        <button class="seg-btn ${bgTab === 'pic' ? 'active' : ''}" data-bgt="pic">Картинка</button>
+      </div>
+      ${bgTab === 'color' ? `
+      <div class="swatches" id="bgColorSw">
+        ${SWATCHES.map(c => `<div class="swatch ${slideOf().bg === c ? 'active' : ''}" data-c="${c}" style="background:${c}" title="${c}"></div>`).join('')}
+      </div>
+      <input type="color" id="bgColorPick" title="Свой цвет" value="${/^#[0-9a-fA-F]{6}$/.test(slideOf().bg) ? slideOf().bg : '#1c1c1e'}">` : ''}
+      ${bgTab === 'grad' ? `
       <div class="swatches" id="bgSwatches">
         ${BG_PRESETS.map((p, i) =>
-          `<div class="swatch ${slideOf().bg === p.css ? 'active' : ''}" data-i="${i}" style="background:${p.preview}" title="Фон ${i + 1}"></div>`).join('')}
+          `<div class="swatch ${slideOf().bg === p.css ? 'active' : ''}" data-i="${i}" style="background:${p.preview}" title="Градиент ${i + 1}"></div>`).join('')}
+      </div>` : ''}
+      ${bgTab === 'pic' ? `
+      <div class="seg-group" style="margin-top:8px">
+        <button class="seg-btn" id="bgPicPick">🖼 Загрузить картинку…</button>
+        ${slideOf().bgImage ? `<button class="seg-btn" id="bgPicClear">✕ Убрать</button>` : ''}
       </div>
+      ${slideOf().bgImage
+        ? `<div class="bg-pic-preview" style="background-image:url('${slideOf().bgImage}')"></div>`
+        : `<div class="bg-pic-hint">Картинка ляжет поверх цвета или градиента (режим обложки).</div>`}` : ''}
     </div>
 
     <div class="prop-group">
@@ -1022,12 +1091,27 @@ function renderBaseProps(panel) {
   });
   panel.querySelector('[data-a="dup-slide"]').onclick = () => duplicateSlide(state.ui.current);
   panel.querySelector('[data-a="del-slide"]').onclick = () => deleteSlide(state.ui.current);
+  panel.querySelectorAll('[data-size]').forEach(b => {
+    b.onclick = () => setSlideSize(b.dataset.size);
+  });
+  panel.querySelectorAll('[data-bgt]').forEach(b => {
+    b.onclick = () => { bgTab = b.dataset.bgt; renderBaseProps(panel); };
+  });
+  panel.querySelectorAll('#bgColorSw .swatch').forEach(sw => {
+    sw.onclick = () => setState(() => { flushCommit(); slideOf().bg = sw.dataset.c; });
+  });
+  const bgPick = panel.querySelector('#bgColorPick');
+  if (bgPick) bgPick.onchange = () => setState(() => { flushCommit(); slideOf().bg = bgPick.value; });
   panel.querySelectorAll('#bgSwatches .swatch').forEach(sw => {
     sw.onclick = () => {
       const bg = BG_PRESETS[+sw.dataset.i].css;
       setState(() => { flushCommit(); slideOf().bg = bg; });
     };
   });
+  const bgPic = panel.querySelector('#bgPicPick');
+  if (bgPic) bgPic.onclick = () => $('#fileSlideBg').click();
+  const bgClr = panel.querySelector('#bgPicClear');
+  if (bgClr) bgClr.onclick = () => setState(() => { flushCommit(); slideOf().bgImage = ''; });
 }
 
 function renderTextProps(panel, e) {
@@ -1738,6 +1822,22 @@ function processFile(file, cb) {
   reader.readAsDataURL(file);
 }
 
+function bindSlideBgInput() {
+  const fsb = $('#fileSlideBg');
+  if (!fsb) return;
+  fsb.addEventListener('change', ev => {
+    const file = ev.target.files && ev.target.files[0];
+    if (!file) return;
+    const rd = new FileReader();
+    rd.onload = () => {
+      setState(() => { flushCommit(); slideOf().bgImage = rd.result; });
+      toast('Картинка фона установлена');
+    };
+    rd.readAsDataURL(file);
+    ev.target.value = '';
+  });
+}
+
 function bindImageInput() {
   $('#fileImage').addEventListener('change', ev => {
     const file = ev.target.files[0];
@@ -2212,6 +2312,8 @@ function bindKeyboard() {
    ============================================================ */
 function init() {
   $('#btnAddSlide').addEventListener('click', addSlide);
+  R.bindSlideDnd();
+  bindSlideBgInput();
   bindThemeSwitch();
   bindImageInput();
   bindBgModal();
@@ -2232,7 +2334,7 @@ App.editor = {
   layerSel, toggleLock, groupSel, ungroupSel,
   startEdit, commitEdit, flushCommit, bindNodeEvents, addShape, addIcon, addSticker, onPaste,
   addText, addBlock, addImageFromSrc, duplicateEl, deleteEl, layerEl,
-  addSlide, duplicateSlide, deleteSlide, gotoSlide,
+  addSlide, duplicateSlide, deleteSlide, gotoSlide, moveSlide, setSlideSize,
   renderProps, scheduleThumbSave, pickImage, processFile,
   openBgModal, closeBgModal, removeBg, drawBgPreview, applyBgRemoval,
   setTheme, openPresent, closePresent, togglePresentEdit, presentStep,
