@@ -37,7 +37,8 @@ if (img) {
 
 /* 4. клик по фону — снятие */
 const vp = doc.querySelector('#stageViewport');
-vp.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, pointerId: 3 }));
+vp.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, pointerId: 3, clientX: 40, clientY: 40 }));
+window.dispatchEvent(new window.PointerEvent('pointerup', { bubbles: true, pointerId: 3, clientX: 41, clientY: 40 }));
 check('клик по фону снял выделение', App.state.ui.selected === null);
 
 /* 5. Esc */

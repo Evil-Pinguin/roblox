@@ -55,7 +55,7 @@ function setTextSafe(div, text) {
 function applyElStyles(div, e) {
   const editing = div.getAttribute('contenteditable') === 'true';
   div.className = 'el ' + e.type +
-    (state.ui.selected === e.id ? ' selected' : '') +
+    (App.isSelected(e.id) ? ' selected' : '') +
     (editing ? ' editing' : '');
   div.style.left = e.x + 'px';
   div.style.top = e.y + 'px';
@@ -181,7 +181,7 @@ function renderStage() {
     vp.appendChild(sc);
     vp.addEventListener('pointerdown', ev => {
       if (ev.target === vp || ev.target.classList.contains('slide-scaler')) {
-        App.editor.select(null);
+        App.editor.startMarquee(ev);   // рамка выделения; клик без движения — снять
       }
     });
     stage.appendChild(vp);

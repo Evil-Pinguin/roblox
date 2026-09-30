@@ -3,6 +3,17 @@ const { spawnSync } = require('child_process');
 const fs = require('fs');
 const path = require('path');
 
+// jsdom не переживает очистку node_modules — восстанавливаем на лету
+try {
+  require('jsdom');
+} catch (e) {
+  console.log('jsdom не найден → npm install…');
+  const r = spawnSync('npm', ['install', '--no-audit', '--no-fund'], {
+    cwd: path.join(__dirname, '..'), stdio: 'inherit',
+  });
+  if (r.status !== 0) process.exit(1);
+}
+
 const suites = fs.readdirSync(__dirname)
   .filter(f => f.endsWith('-test.js') || f === 'smoke.js')
   .sort();

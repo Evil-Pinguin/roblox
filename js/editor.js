@@ -22,6 +22,28 @@ const $ = R.$;
 const $$ = R.$$;
 const toast = R.toast;
 const elNode = R.elNode;
+
+/* ---- множество выделенных: selectedIds[] + selected = основной ---- */
+function selOne(id) {
+  state.ui.selected = id || null;
+  state.ui.selectedIds = id ? [id] : [];
+}
+function selNone() { selOne(null); }
+function selSetMany(ids) {
+  const uniq = [];
+  for (const id of ids) {
+    if (findEl(id) && !uniq.includes(id)) uniq.push(id);
+  }
+  state.ui.selectedIds = uniq;
+  state.ui.selected = uniq.length ? uniq[uniq.length - 1] : null;
+}
+/* живые id выделения (без битых ссылок) */
+function selIds() {
+  const raw = (state.ui.selectedIds && state.ui.selectedIds.length)
+    ? state.ui.selectedIds.slice()
+    : (state.ui.selected ? [state.ui.selected] : []);
+  return raw.filter(id => findEl(id));
+}
 const activeScale = R.activeScale;
 const setTextSafe = R.setTextSafe;
 
@@ -61,7 +83,27 @@ function select(id) {
   setState(() => {
     if (state.ui.editingId && state.ui.editingId !== id) flushCommit();
     if (id && !findEl(id)) id = null;
-    state.ui.selected = id;
+    selOne(id);
+  });
+}
+
+/* Shift+клик: добавить/убрать из выделения */
+function toggleSelect(id) {
+  if (!findEl(id)) return;
+  setState(() => {
+    if (state.ui.editingId) flushCommit();
+    const ids = selIds();
+    const i = ids.indexOf(id);
+    if (i >= 0) ids.splice(i, 1); else ids.push(id);
+    selSetMany(ids);
+  });
+}
+
+/* выделить набор (рамка мышью) */
+function setSelection(ids) {
+  setState(() => {
+    if (state.ui.editingId) flushCommit();
+    selSetMany(ids || []);
   });
 }
 
@@ -92,6 +134,160 @@ function startEdit(id) {
 /* ============================================================
    DRAG / RESIZE
    ============================================================ */
+/* ============================================================
+   МНОЖЕСТВЕННОЕ ВЫДЕЛЕНИЕ: рамка мышью + буфер обмена
+   ============================================================ */
+
+/* Рамка (marquee) от фонового pointerdown: тянем — выделяем всё,
+   что пересекает рамку; просто клик — снять выделение;
+   Shift — добавить к текущему выделению. */
+function startMarquee(ev) {
+  if (ev.button > 0) return;                 // только левая кнопка
+  const stage = $('#stage');
+  const vp = $('#stageViewport');
+  if (!stage || !vp) { select(null); return; }
+  const addMode = !!ev.shiftKey;
+
+  const stageRect = stage.getBoundingClientRect();
+  const sx = ev.clientX - stageRect.left, sy = ev.clientY - stageRect.top;
+  const box = document.createElement('div');
+  box.className = 'marquee';
+  box.style.left = sx + 'px';
+  box.style.top = sy + 'px';
+  box.style.width = '0px';
+  box.style.height = '0px';
+  stage.appendChild(box);
+
+  const win = stage.ownerDocument.defaultView || window;
+  let moved = false, L = 0, T = 0, Rt = 0, Bt = 0;
+
+  /* локальные экранные координаты → координаты слайда (× scale) */
+  const toSlide = () => {
+    const vr = vp.getBoundingClientRect();
+    const sc = activeScale() || 1;
+    const vx = vr.left - stageRect.left, vy = vr.top - stageRect.top;
+    return {
+      left: (L - vx) / sc, top: (T - vy) / sc,
+      right: (Rt - vx) / sc, bottom: (Bt - vy) / sc,
+    };
+  };
+  const hits = apply => {
+    const r = toSlide();
+    const out = [];
+    stage.querySelectorAll('.el').forEach(n => {
+      const e = findEl(n.dataset.id);
+      if (!e) return;
+      const el = e.x, et = e.y, er = e.x + e.w, eb = e.y + (e.h || 1);
+      const inter = r.left < er && r.right > el && r.top < eb && r.bottom > et;
+      if (apply) n.classList.toggle('marquee-hit', inter);
+      if (inter) out.push(e.id);
+    });
+    return out;
+  };
+
+  const onMove = mv => {
+    const cx = mv.clientX - stageRect.left, cy = mv.clientY - stageRect.top;
+    if (!moved && Math.hypot(cx - sx, cy - sy) < 3) return;  // порог
+    moved = true;
+    L = Math.min(sx, cx); T = Math.min(sy, cy);
+    Rt = Math.max(sx, cx); Bt = Math.max(sy, cy);
+    box.style.left = L + 'px';
+    box.style.top = T + 'px';
+    box.style.width = (Rt - L) + 'px';
+    box.style.height = (Bt - T) + 'px';
+    hits(true);
+  };
+  const end = () => {
+    win.removeEventListener('pointermove', onMove);
+    win.removeEventListener('pointerup', end);
+    win.removeEventListener('pointercancel', end);
+    box.remove();
+    stage.querySelectorAll('.el.marquee-hit').forEach(n => n.classList.remove('marquee-hit'));
+    if (!moved) { select(null); return; }     // клик по фону — снять выделение
+    const ids = hits(false);
+    if (addMode) setSelection(selIds().concat(ids));
+    else setSelection(ids);
+  };
+  win.addEventListener('pointermove', onMove);
+  win.addEventListener('pointerup', end);
+  win.addEventListener('pointercancel', end);
+}
+
+/* ---- буфер обмена (внутренний) ---- */
+let clipboard = [];
+
+function selectionSnapshot() {
+  return selIds()
+    .map(id => findEl(id))
+    .filter(Boolean)
+    .map(e => JSON.parse(JSON.stringify(e)));
+}
+
+function copySel() {
+  const snap = selectionSnapshot();
+  if (!snap.length) { toast('Нечего копировать'); return; }
+  clipboard = snap;
+  toast(snap.length > 1 ? `Скопировано: ${snap.length}` : 'Скопировано');
+}
+
+function pasteSel() {
+  if (!clipboard.length) { toast('Буфер пуст'); return; }
+  const pasted = [];
+  setState(() => {
+    flushCommit();
+    const arr = slideOf().elements;
+    const topZ = arr.reduce((m, e) => Math.max(m, e.zIndex), 0);
+    clipboard.forEach((src, i) => {
+      const c = JSON.parse(JSON.stringify(src));
+      c.id = uid();
+      c.x = Math.max(-(c.w - 40), Math.min(SLIDE_W - 40, src.x + 16));
+      c.y = Math.max(-20, Math.min(SLIDE_H - 30, src.y + 16));
+      c.zIndex = topZ + 1 + i;
+      arr.push(c);
+      pasted.push(c.id);
+    });
+    normalizeZ(slideOf());
+    selSetMany(pasted);   // внутри мутатора — рендер сразу с выделением
+  });
+}
+
+function dupSel() {
+  const ids = selIds();
+  if (!ids.length) { toast('Нечего дублировать'); return; }
+  const copies = [];
+  setState(() => {
+    flushCommit();
+    const arr = slideOf().elements;
+    let n = 0;
+    for (const id of ids) {
+      const src = findEl(id);
+      if (!src) continue;
+      const c = JSON.parse(JSON.stringify(src));
+      c.id = uid();
+      c.x += 28; c.y += 28;
+      arr.push(c);
+      copies.push(c.id);
+      n++;
+    }
+    if (n) {
+      normalizeZ(slideOf());
+      selSetMany(copies);
+    }
+  });
+}
+
+function deleteSelection() {
+  const ids = selIds();
+  if (!ids.length) return;
+  setState(() => {
+    flushCommit();
+    const s = slideOf();
+    s.elements = s.elements.filter(e => !ids.includes(e.id));
+    normalizeZ(s);
+    selNone();
+  });
+}
+
 function bindNodeEvents(node, ref) {
   // закрываемся только по id: после undo/redo (и импорта) project
   // заменяется новыми объектами, старые ссылки открепляются
@@ -107,10 +303,19 @@ function bindNodeEvents(node, ref) {
     if (state.ui.editingId === e.id) return;   // идёт редактирование текста
     if (isHandleTarget(ev.target)) return;     // ресайз/поворот — отдельно
     ev.stopPropagation();
-    if (state.ui.selected !== e.id) select(e.id);
+    if (ev.shiftKey) { toggleSelect(e.id); return; }   // Shift+клик — режим выделения
+    if (!App.isSelected(e.id)) select(e.id);   // чужой клик — схлопнуть в него;
+    //   свой клик по члену группы — группа сохраняется
 
     const startX = ev.clientX, startY = ev.clientY;
-    const ox = e.x, oy = e.y;
+    // тянем всё выделение (группа), если этот элемент её часть
+    const members = selIds();
+    const starts = (members.includes(e.id) && members.length > 1 ? members : [e.id])
+      .map(mid => {
+        const m = findEl(mid);
+        return m ? { id: mid, x: m.x, y: m.y, w: m.w } : null;
+      })
+      .filter(Boolean);
     let moved = false;
     if (node.setPointerCapture && ev.pointerId != null) {
       try { node.setPointerCapture(ev.pointerId); } catch (_) {}
@@ -122,12 +327,18 @@ function bindNodeEvents(node, ref) {
       const dy = (mv.clientY - startY) / sc;
       if (!moved && Math.hypot(dx, dy) < 2) return;  // порог: клик ≠ перетаскивание
       moved = true;
-      // живой предпросмотр внутри жеста (узел не пересоздаётся)
-      e.x = Math.round(Math.max(-(e.w - 40), Math.min(SLIDE_W - 40, ox + dx)));
-      e.y = Math.round(Math.max(-20, Math.min(SLIDE_H - 30, oy + dy)));
-      const live = elNode(e.id) || node;
-      live.style.left = e.x + 'px';
-      live.style.top = e.y + 'px';
+      // живой предпросмотр: двигаем все элементы группы
+      for (const s of starts) {
+        const m = findEl(s.id);
+        if (!m) continue;
+        m.x = Math.round(Math.max(-(s.w - 40), Math.min(SLIDE_W - 40, s.x + dx)));
+        m.y = Math.round(Math.max(-20, Math.min(SLIDE_H - 30, s.y + dy)));
+        const live = elNode(s.id);
+        if (live) {
+          live.style.left = m.x + 'px';
+          live.style.top = m.y + 'px';
+        }
+      }
       R.positionToolbar();
     };
     // слушаем на window: жест переживает выход курсора за пределы узла
@@ -302,7 +513,7 @@ function addText() {
     const arr = slideOf().elements;
     arr.push(e);
     normalizeZ(slideOf());
-    state.ui.selected = e.id;
+    selOne(e.id);
   });
   toast('Текст добавлен — двойной клик для правки');
   setTimeout(() => startEdit(e.id), 60);
@@ -319,7 +530,7 @@ function addBlock() {
     const arr = slideOf().elements;
     arr.push(e);
     normalizeZ(slideOf());
-    state.ui.selected = e.id;
+    selOne(e.id);
   });
 }
 
@@ -336,7 +547,7 @@ function addImageFromSrc(src, ar) {
     const arr = slideOf().elements;
     arr.push(e);
     normalizeZ(slideOf());
-    state.ui.selected = e.id;
+    selOne(e.id);
   });
 }
 
@@ -351,7 +562,7 @@ function duplicateEl(id) {
     const arr = slideOf().elements;
     arr.push(copy);
     normalizeZ(slideOf());
-    state.ui.selected = copy.id;
+    selOne(copy.id);
   });
 }
 
@@ -364,7 +575,7 @@ function deleteEl(id) {
     const i = arr.findIndex(e => e.id === id);
     if (i >= 0) arr.splice(i, 1);
     normalizeZ(slideOf());
-    state.ui.selected = null;
+    selNone();
   });
 }
 
@@ -382,7 +593,7 @@ function layerEl(id, dir) {
     if (k < 0 || m < 0 || m >= a.length) return;
     [a[k], a[m]] = [a[m], a[k]];
     normalizeZ(slideOf());
-    state.ui.selected = id;
+    selOne(id);
   });
 }
 
@@ -401,7 +612,7 @@ function addSlide() {
     flushCommit();
     state.project.slides.push(slide);
     state.ui.current = state.project.slides.length - 1;
-    state.ui.selected = null;
+    selNone();
   });
   toast('Слайд добавлен');
 }
@@ -414,7 +625,7 @@ function duplicateSlide(i) {
     copy.elements.forEach(e => e.id = uid());
     state.project.slides.splice(i + 1, 0, copy);
     state.ui.current = i + 1;
-    state.ui.selected = null;
+    selNone();
   });
 }
 
@@ -425,7 +636,7 @@ function deleteSlide(i) {
     state.project.slides.splice(i, 1);
     state.ui.current = Math.min(state.ui.current, state.project.slides.length - 1);
     if (state.ui.current === i) state.ui.current = Math.max(0, i - 1);
-    state.ui.selected = null;
+    selNone();
   });
 }
 
@@ -433,7 +644,7 @@ function gotoSlide(i) {
   setState(() => {
     flushCommit();
     state.ui.current = i;
-    state.ui.selected = null;
+    selNone();
   });
 }
 
@@ -611,8 +822,8 @@ function renderTextProps(panel, e) {
   panel.querySelectorAll('#pSw .swatch').forEach(sw => {
     sw.onclick = () => { const c = sw.dataset.c; setState(() => { e.props.color = c; }); };
   });
-  panel.querySelector('#pDup').onclick = () => duplicateEl(e.id);
-  panel.querySelector('#pDel').onclick = () => deleteEl(e.id);
+  panel.querySelector('#pDup').onclick = () => dupSel();
+  panel.querySelector('#pDel').onclick = () => deleteSelection();
 }
 
 /* живой предпросмотр стиля текста (внутри жеста ввода/слайдера) */
@@ -692,8 +903,8 @@ function renderImageProps(panel, e) {
   bindRange(panel, '#pOpacity', null, v => {
     e.props.opacity = v / 100; const n = nodeOf(); if (n) n.style.opacity = e.props.opacity;
   });
-  panel.querySelector('#pDup').onclick = () => duplicateEl(e.id);
-  panel.querySelector('#pDel').onclick = () => deleteEl(e.id);
+  panel.querySelector('#pDup').onclick = () => dupSel();
+  panel.querySelector('#pDel').onclick = () => deleteSelection();
 }
 
 function renderBlockProps(panel, e) {
@@ -733,8 +944,8 @@ function renderBlockProps(panel, e) {
   bindRange(panel, '#pOpacity', null, v => {
     e.props.opacity = v / 100; const n = nodeOf(); if (n) n.style.opacity = e.props.opacity;
   });
-  panel.querySelector('#pDup').onclick = () => duplicateEl(e.id);
-  panel.querySelector('#pDel').onclick = () => deleteEl(e.id);
+  panel.querySelector('#pDup').onclick = () => dupSel();
+  panel.querySelector('#pDel').onclick = () => deleteSelection();
 }
 
 /* слайдер: input — живой предпросмотр, change — коммит через setState */
@@ -803,7 +1014,7 @@ function bindImageInput() {
             if (!e.props.originalSrc) e.props.originalSrc = e.props.src;
             e.props.src = src; e.props.ar = ar;
             e.w = 460; e.h = Math.round(460 / ar);
-            state.ui.selected = e.id;
+            selOne(e.id);
           });
           toast('Фото заменено');
         }
@@ -998,8 +1209,8 @@ function bindElToolbar() {
     if (!act || !state.ui.selected) return;
     if (act === 'up')   layerEl(state.ui.selected, 'up');
     if (act === 'down') layerEl(state.ui.selected, 'down');
-    if (act === 'dup')  duplicateEl(state.ui.selected);
-    if (act === 'del')  deleteEl(state.ui.selected);
+    if (act === 'dup')  dupSel();
+    if (act === 'del')  deleteSelection();
     if (act === 'bg')   openBgModal(state.ui.selected);
   });
 }
@@ -1028,7 +1239,7 @@ function bindThemeSwitch() {
 function openPresent() {
   setState(() => {
     flushCommit();
-    state.ui.selected = null;
+    selNone();
     state.ui.present = true;
   });
   toast('Клик — дальше, ✏️ — редактировать прямо здесь, Esc — выход');
@@ -1039,7 +1250,7 @@ function closePresent() {
     flushCommit();
     state.ui.present = false;
     state.ui.presentEdit = false;
-    state.ui.selected = null;
+    selNone();
   });
 }
 
@@ -1048,7 +1259,7 @@ function togglePresentEdit() {
   setState(() => {
     if (turningOff) {
       flushCommit();
-      state.ui.selected = null;
+      selNone();
     }
     state.ui.presentEdit = !turningOff;
   });
@@ -1065,7 +1276,7 @@ function presentStep(d) {
   setState(() => {
     flushCommit();
     state.ui.current = n;   // редактор и поиск элементов всегда на том же слайде
-    state.ui.selected = null;
+    selNone();
   });
 }
 
@@ -1129,16 +1340,21 @@ function bindKeyboard() {
         return;
       }
 
-      // редактирование: Delete / дублирование / сдвиг стрелками
+      // буфер в режиме правки презентации
+      if (state.ui.presentEdit && (ev.ctrlKey || ev.metaKey) && !ev.altKey) {
+        const ck = ev.key.toLowerCase();
+        if (ck === 'c') { ev.preventDefault(); copySel(); return; }
+        if (ck === 'v') { ev.preventDefault(); pasteSel(); return; }
+        if (ck === 'd') { ev.preventDefault(); dupSel(); return; }
+      }
+
+      // редактирование: Delete / сдвиг стрелками
       if (state.ui.presentEdit && state.ui.selected) {
         const id = state.ui.selected;
         const e = findEl(id);
         if (e) {
           if (ev.key === 'Delete' || ev.key === 'Backspace') {
-            ev.preventDefault(); deleteEl(id); return;
-          }
-          if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'd') {
-            ev.preventDefault(); duplicateEl(id); return;
+            ev.preventDefault(); deleteSelection(); return;
           }
           if (ev.key.startsWith('Arrow')) {
             ev.preventDefault();
@@ -1176,20 +1392,28 @@ function bindKeyboard() {
 
     if (tryUndoRedo(ev)) return;
 
+    // буфер: Ctrl+C / Ctrl+V / Ctrl+D (в полях ввода — нативные, выше по коду)
+    if ((ev.ctrlKey || ev.metaKey) && !ev.altKey) {
+      const ck = ev.key.toLowerCase();
+      if (ck === 'c') { ev.preventDefault(); copySel(); return; }
+      if (ck === 'v') { ev.preventDefault(); pasteSel(); return; }
+      if (ck === 'd') { ev.preventDefault(); dupSel(); return; }
+    }
+
     if (ev.key === 'Escape') { select(null); return; }
+
+    // Delete/Backspace — на всё выделение
+    if (ev.key === 'Delete' || ev.key === 'Backspace') {
+      if (selIds().length) { ev.preventDefault(); deleteSelection(); }
+      return;
+    }
 
     const id = state.ui.selected;
     if (!id) return;
     const e = findEl(id);
     if (!e) return;
 
-    if (ev.key === 'Delete' || ev.key === 'Backspace') {
-      ev.preventDefault();
-      deleteEl(id);
-    } else if ((ev.ctrlKey || ev.metaKey) && ev.key.toLowerCase() === 'd') {
-      ev.preventDefault();
-      duplicateEl(id);
-    } else if (ev.key.startsWith('Arrow')) {
+    if (ev.key.startsWith('Arrow')) {
       ev.preventDefault();
       const step = ev.shiftKey ? 20 : 4;
       setState(() => {
@@ -1222,7 +1446,9 @@ function init() {
 }
 
 App.editor = {
-  select, startEdit, commitEdit, flushCommit, bindNodeEvents,
+  select, toggleSelect, setSelection, startMarquee,
+  copySel, pasteSel, dupSel, deleteSelection,
+  startEdit, commitEdit, flushCommit, bindNodeEvents,
   addText, addBlock, addImageFromSrc, duplicateEl, deleteEl, layerEl,
   addSlide, duplicateSlide, deleteSlide, gotoSlide,
   renderProps, scheduleThumbSave, pickImage, processFile,

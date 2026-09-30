@@ -113,7 +113,8 @@ const state = {
   project: defaultProject(),
   ui: {
     current: 0,        // индекс открытого слайда
-    selected: null,    // id выбранного элемента
+    selected: null,    // id основного (последнего) выбранного элемента
+    selectedIds: [],   // все выделенные id (Shift+клик, рамка)
     editingId: null,   // id текста, который сейчас редактируется
     present: false,    // открыта ли презентация
     presentEdit: false,// режим редактирования внутри презентации
@@ -146,10 +147,20 @@ function resetHistory() {
 const canUndo = () => past.length > 0;
 const canRedo = () => future.length > 0;
 
+/* входит ли id в текущее выделение (одиночное или множественное) */
+function isSelected(id) {
+  if (state.ui.selectedIds && state.ui.selectedIds.includes(id)) return true;
+  return state.ui.selected === id;
+}
+
 function restoreSnapshot(snap) {
+  // выделение переживает undo/redo, если его объекты есть в целевом слайде
+  const keep = (state.ui.selectedIds || []).filter(id => findEl(id));
   state.project = JSON.parse(snap.p);
   state.ui.current = Math.max(0, Math.min(snap.c, state.project.slides.length - 1));
-  state.ui.selected = null;
+  const alive = keep.filter(id => findEl(id));
+  state.ui.selectedIds = alive;
+  state.ui.selected = alive.length ? alive[alive.length - 1] : null;
   state.ui.editingId = null;
 }
 
@@ -278,6 +289,7 @@ App.uid = uid;
 App.slideOf = slideOf;
 App.findEl = findEl;
 App.normalizeZ = normalizeZ;
+App.isSelected = isSelected;
 App.normalizeElement = normalizeElement;
 App.normalizeProject = normalizeProject;
 App.migrateProject = migrateProject;

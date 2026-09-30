@@ -31,7 +31,7 @@ function importProject(obj) {
   setState(() => {
     state.project = project;
     state.ui.current = 0;
-    state.ui.selected = null;
+    state.ui.selected = null; state.ui.selectedIds = [];
     state.ui.editingId = null;
     state.ui.presentEdit = false;
   });
@@ -44,7 +44,7 @@ function resetProject() {
   setState(() => {
     state.project = App.defaultProject();
     state.ui.current = 0;
-    state.ui.selected = null;
+    state.ui.selected = null; state.ui.selectedIds = [];
     state.ui.editingId = null;
     state.ui.presentEdit = false;
   });
