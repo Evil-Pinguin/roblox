@@ -16,8 +16,28 @@ App.render.renderAll();      // первый рендер (включает chro
 
 /* Расчёт размера сцены: холст центрируется и вписывается (fit-масштаб)
    в свободную зону центральной колонки между панелями.
-   Повтор после load — шрифты/картинки могли изменить раскладку. */
+   Стартовый масштаб — «вписать» (zoom = 1), повторный пересчёт после
+   load — шрифты/картинки могли изменить раскладку. */
 App.render.fitStage();
 window.addEventListener('load', () => App.render.fitStage());
+
+/* Узкое окно (<1000px): кнопка выезжающей панели свойств.
+   Панель лежит поверх холста справа — сам холст не сжимается. */
+const stageArea = document.querySelector('.stage-area');
+const propsToggle = document.createElement('button');
+propsToggle.id = 'propsToggle';
+propsToggle.className = 'props-toggle';
+propsToggle.title = 'Панель свойств';
+propsToggle.textContent = '☰ Свойства';
+propsToggle.addEventListener('click', () => {
+  document.body.classList.toggle('props-open');
+  App.render.fitStage();               // холст пересчитывается под окно
+});
+if (stageArea) stageArea.appendChild(propsToggle);
+
+window.addEventListener('resize', () => {
+  if (window.innerWidth >= 1000) document.body.classList.remove('props-open');
+  App.render.fitStage();
+});
 
 })(window.App);

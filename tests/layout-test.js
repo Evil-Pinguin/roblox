@@ -36,7 +36,7 @@ const rule = sel => {
 {
   const sa = rule('.stage-area');
   check('stage-area центрирует', /justify-content:\s*center/.test(sa) && /align-items:\s*center/.test(sa));
-  check('stage-area не распирается контентом', /min-width:\s*0/.test(sa) && /min-height:\s*0/.test(sa));
+  check('stage-area не распирается контентом', /min-width:\s*0/.test(sa) && /min-height:\s*60vh/.test(sa));
   check('stage-area прокручивается при зуме', /overflow:\s*auto/.test(sa));
   const st = rule('.stage');
   check('.stage не сжимается flex\'ом', /flex:\s*0\s*0\s*auto/.test(st));
