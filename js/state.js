@@ -20,7 +20,7 @@ function defaultProps(type) {
   if (type === 'image') return { src: '', originalSrc: null, radius: 24, opacity: 1, ar: 16 / 9 };
   if (type === 'block') return { fill: 'rgba(127,127,127,.14)', radius: 22, opacity: 1 };
   return { text: '', fontSize: 36, color: '#eafcff', weight: 700, italic: false,
-           align: 'left', fontFamily: '', opacity: 1 };
+           underline: false, align: 'left', fontFamily: '', opacity: 1 };
 }
 
 /* ---------- фабрики элементов (схема v2) ---------- */
@@ -36,6 +36,7 @@ function makeText(o = {}) {
       color: o.color || '#eafcff',
       weight: num(o.weight, 700),
       italic: !!o.italic,
+      underline: !!o.underline,
       align: o.align || 'left',
       fontFamily: o.fontFamily || '',
       opacity: num(o.opacity, 1),

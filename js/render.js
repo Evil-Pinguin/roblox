@@ -70,6 +70,7 @@ function applyElStyles(div, e) {
     div.style.color = e.props.color;
     div.style.fontWeight = e.props.weight;
     div.style.fontStyle = e.props.italic ? 'italic' : 'normal';
+    div.style.textDecoration = e.props.underline ? 'underline' : 'none';
     div.style.textAlign = e.props.align;
     div.style.fontFamily = e.props.fontFamily || '';
     setTextSafe(div, e.props.text);

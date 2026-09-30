@@ -923,6 +923,7 @@ function renderTextProps(panel, e) {
         <div class="seg-group" style="flex:1.2">
           <button class="seg-btn ${e.props.weight >= 700 ? 'active' : ''}" id="pBold"><b>B</b></button>
           <button class="seg-btn ${e.props.italic ? 'active' : ''}" id="pItalic"><i>I</i></button>
+          <button class="seg-btn ${e.props.underline ? 'active' : ''}" id="pUnderline"><u>U</u></button>
         </div>
       </div>
       <div class="prop-row">
@@ -983,6 +984,9 @@ function renderTextProps(panel, e) {
   panel.querySelector('#pItalic').onclick = () => {
     setState(() => { e.props.italic = !e.props.italic; });
   };
+  panel.querySelector('#pUnderline').onclick = () => {
+    setState(() => { e.props.underline = !e.props.underline; });
+  };
   panel.querySelector('#pFont').onchange = ev => {
     const ff = ev.target.value;
     setState(() => { e.props.fontFamily = ff; });
@@ -1007,6 +1011,7 @@ function applyTextStyle(e) {
     node.style.color = e.props.color;
     node.style.fontWeight = e.props.weight;
     node.style.fontStyle = e.props.italic ? 'italic' : 'normal';
+    node.style.textDecoration = e.props.underline ? 'underline' : 'none';
     node.style.textAlign = e.props.align;
     node.style.opacity = e.props.opacity ?? 1;
     node.style.fontFamily = e.props.fontFamily || '';
