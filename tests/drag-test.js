@@ -23,14 +23,14 @@ const se = () => doc.querySelector(`#stage .el.text[data-id="${id()}"] .handle[d
   check('клик выделил', App.state.ui.selected === id());
 }
 
-/* 2. drag 1:1 */
+/* 2. drag 1:1 — координаты вне радиуса привязки (≤6px от целей) */
 {
   const n = node(); const x0 = cur().x, y0 = cur().y;
   n.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, pointerId: 2, clientX: 400, clientY: 400 }));
-  window.dispatchEvent(new window.PointerEvent('pointermove', { bubbles: true, pointerId: 2, clientX: 500, clientY: 450 }));
-  window.dispatchEvent(new window.PointerEvent('pointerup', { bubbles: true, pointerId: 2, clientX: 500, clientY: 450 }));
-  check('drag: x += dx', cur().x === x0 + 100);
-  check('drag: y += dy', cur().y === y0 + 50);
+  window.dispatchEvent(new window.PointerEvent('pointermove', { bubbles: true, pointerId: 2, clientX: 480, clientY: 426 }));
+  window.dispatchEvent(new window.PointerEvent('pointerup', { bubbles: true, pointerId: 2, clientX: 480, clientY: 426 }));
+  check('drag: x += dx', cur().x === x0 + 80);
+  check('drag: y += dy', cur().y === y0 + 26);
 }
 
 /* 3. move/up вне узла (на document) доезжают до жеста */
@@ -46,10 +46,10 @@ const se = () => doc.querySelector(`#stage .el.text[data-id="${id()}"] .handle[d
 {
   const n = node(); const x0 = cur().x;
   n.dispatchEvent(new window.PointerEvent('pointerdown', { bubbles: true, pointerId: 4, clientX: 600, clientY: 600 }));
-  window.dispatchEvent(new window.PointerEvent('pointermove', { bubbles: true, pointerId: 4, clientX: 650, clientY: 600 }));
-  window.dispatchEvent(new window.PointerEvent('pointercancel', { bubbles: true, pointerId: 4, clientX: 650, clientY: 600 }));
+  window.dispatchEvent(new window.PointerEvent('pointermove', { bubbles: true, pointerId: 4, clientX: 630, clientY: 600 }));
+  window.dispatchEvent(new window.PointerEvent('pointercancel', { bubbles: true, pointerId: 4, clientX: 630, clientY: 600 }));
   const x1 = cur().x;
-  check('cancel: сдвиг зафиксирован', x1 === x0 + 50);
+  check('cancel: сдвиг зафиксирован', x1 === x0 + 30);
   window.dispatchEvent(new window.PointerEvent('pointermove', { bubbles: true, pointerId: 4, clientX: 700, clientY: 600 }));
   check('cancel: обработчик снят', cur().x === x1);
 }

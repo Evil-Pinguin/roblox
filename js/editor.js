@@ -89,14 +89,36 @@ function select(id) {
 
 /* Shift+клик: добавить/убрать из выделения */
 function toggleSelect(id) {
-  if (!findEl(id)) return;
+  toggleSelectMany([id]);
+}
+
+/* Shift+клик по члену группы — переключаем сразу всю группу */
+function toggleSelectMany(ids) {
+  if (!ids.length) return;
   setState(() => {
     if (state.ui.editingId) flushCommit();
-    const ids = selIds();
-    const i = ids.indexOf(id);
-    if (i >= 0) ids.splice(i, 1); else ids.push(id);
-    selSetMany(ids);
+    const cur = selIds();
+    const allIn = ids.every(i => cur.includes(i));
+    const next = allIn
+      ? cur.filter(i => !ids.includes(i))
+      : cur.concat(ids.filter(i => !cur.includes(i)));
+    selSetMany(next);
   });
+}
+
+/* клик по элементу: группа groupId выделяется целиком, кликнутый — основной */
+function selectLike(e) {
+  const g = e.props && e.props.groupId;
+  if (g) {
+    const ids = slideOf().elements
+      .filter(x => x.props && x.props.groupId === g)
+      .map(x => x.id)
+      .filter(i => i !== e.id)
+      .concat(e.id);
+    setSelection(ids);
+  } else {
+    select(e.id);
+  }
 }
 
 /* выделить набор (рамка мышью) */
@@ -279,13 +301,84 @@ function dupSel() {
 function deleteSelection() {
   const ids = selIds();
   if (!ids.length) return;
+  const locked = ids.filter(id => (findEl(id).props || {}).locked);
+  const target = ids.filter(id => !locked.includes(id));
+  if (!target.length) {
+    toast('Элемент заблокирован — сначала разблокируйте 🔒');
+    return;
+  }
   setState(() => {
     flushCommit();
     const s = slideOf();
-    s.elements = s.elements.filter(e => !ids.includes(e.id));
+    s.elements = s.elements.filter(e => !target.includes(e.id));
     normalizeZ(s);
-    selNone();
+    selSetMany(locked);   // заблокированные остаются выделенными
   });
+}
+
+/* ---- порядок слоёв: на весь выбор ---- */
+function layerSel(dir) {
+  const ids = selIds();
+  if (!ids.length) return;
+  setState(() => {
+    flushCommit();
+    const a = slideOf().elements;
+    const has = id => ids.includes(id);
+    if (dir === 'up') {
+      // снизу вверх: выбранный всплывает мимо невыбранного соседа
+      for (let i = a.length - 2; i >= 0; i--) {
+        if (has(a[i].id) && !has(a[i + 1].id)) [a[i], a[i + 1]] = [a[i + 1], a[i]];
+      }
+    } else {
+      for (let i = 1; i < a.length; i++) {
+        if (has(a[i].id) && !has(a[i - 1].id)) [a[i], a[i - 1]] = [a[i - 1], a[i]];
+      }
+    }
+    normalizeZ(slideOf());
+  });
+}
+
+/* ---- блокировка ---- */
+function toggleLock() {
+  const ids = selIds();
+  if (!ids.length) { toast('Нечего блокировать'); return; }
+  const to = !((findEl(ids[0]).props || {}).locked);
+  setState(() => {
+    flushCommit();
+    ids.forEach(id => {
+      const e = findEl(id);
+      if (e) e.props.locked = to;
+    });
+  });
+  toast(to ? 'Заблокировано 🔒' : 'Разблокировано');
+}
+
+/* ---- группировка ---- */
+function groupSel() {
+  const ids = selIds();
+  if (ids.length < 2) { toast('Выделите два и более элемента'); return; }
+  const gid = 'g-' + uid();
+  setState(() => {
+    flushCommit();
+    ids.forEach(id => {
+      const e = findEl(id);
+      if (e) e.props.groupId = gid;
+    });
+  });
+  toast('Сгруппировано: ' + ids.length);
+}
+
+function ungroupSel() {
+  const ids = selIds().filter(id => (findEl(id).props || {}).groupId);
+  if (!ids.length) { toast('Нечего разгруппировать'); return; }
+  setState(() => {
+    flushCommit();
+    ids.forEach(id => {
+      const e = findEl(id);
+      if (e) e.props.groupId = null;
+    });
+  });
+  toast('Группа снята');
 }
 
 function bindNodeEvents(node, ref) {
@@ -303,9 +396,18 @@ function bindNodeEvents(node, ref) {
     if (state.ui.editingId === e.id) return;   // идёт редактирование текста
     if (isHandleTarget(ev.target)) return;     // ресайз/поворот — отдельно
     ev.stopPropagation();
-    if (ev.shiftKey) { toggleSelect(e.id); return; }   // Shift+клик — режим выделения
-    if (!App.isSelected(e.id)) select(e.id);   // чужой клик — схлопнуть в него;
-    //   свой клик по члену группы — группа сохраняется
+    if (ev.shiftKey) {
+      // Shift+клик: группа groupId переключается целиком
+      const g = e.props && e.props.groupId;
+      const ids = g
+        ? slideOf().elements.filter(x => x.props.groupId === g).map(x => x.id)
+        : [e.id];
+      toggleSelectMany(ids.filter(i => i !== e.id).concat(e.id));
+      return;
+    }
+    if (!App.isSelected(e.id)) selectLike(e);  // чужой клик — схлопнуть в него
+    //   (для группы — в её состав); свой клик по члену — группа сохраняется
+    if (e.props.locked) return;                 // блокировка: выделить можно, тянуть — нет
 
     const startX = ev.clientX, startY = ev.clientY;
     // тянем всё выделение (группа), если этот элемент её часть
@@ -317,6 +419,26 @@ function bindNodeEvents(node, ref) {
       })
       .filter(Boolean);
     let moved = false;
+
+    /* ---- привязка: центр слайда, края/центры других элементов ---- */
+    const SNAP_R = 6;                       // радиус захвата, экранных px
+    const th = SNAP_R / gestureScale();     // в координатах слайда
+    const targetsX = [0, SLIDE_W / 2, SLIDE_W];
+    const targetsY = [0, SLIDE_H / 2, SLIDE_H];
+    const memberSet = new Set(starts.map(s => s.id));
+    for (const o of slideOf().elements) {
+      if (memberSet.has(o.id)) continue;
+      targetsX.push(o.x, o.x + o.w / 2, o.x + o.w);
+      targetsY.push(o.y, o.y + (o.h || 0) / 2, o.y + (o.h || 0));
+    }
+    const stageEl = $('#stage'), vpEl = $('#stageViewport');
+    const stR = stageEl ? stageEl.getBoundingClientRect() : { left: 0, top: 0 };
+    const vpR = vpEl ? vpEl.getBoundingClientRect() : { left: 0, top: 0 };
+    const vx = vpR.left - stR.left, vy = vpR.top - stR.top;
+    const gv = document.createElement('div'); gv.className = 'guide guide-v';
+    const gh = document.createElement('div'); gh.className = 'guide guide-h';
+    if (stageEl) { stageEl.appendChild(gv); stageEl.appendChild(gh); }
+
     if (node.setPointerCapture && ev.pointerId != null) {
       try { node.setPointerCapture(ev.pointerId); } catch (_) {}
     }
@@ -327,18 +449,53 @@ function bindNodeEvents(node, ref) {
       const dy = (mv.clientY - startY) / sc;
       if (!moved && Math.hypot(dx, dy) < 2) return;  // порог: клик ≠ перетаскивание
       moved = true;
-      // живой предпросмотр: двигаем все элементы группы
+      // живой предпросмотр: базовые позиции всей группы
       for (const s of starts) {
         const m = findEl(s.id);
         if (!m) continue;
         m.x = Math.round(Math.max(-(s.w - 40), Math.min(SLIDE_W - 40, s.x + dx)));
         m.y = Math.round(Math.max(-20, Math.min(SLIDE_H - 30, s.y + dy)));
+      }
+      // привязка по анкору (элементу, за который тянут)
+      const ae = findEl(e.id);
+      let sdx = 0, sdy = 0, gx = null, gy = null;
+      if (ae) {
+        let bx = Infinity, by = Infinity;
+        for (const p of [ae.x, ae.x + ae.w / 2, ae.x + ae.w]) {
+          for (const t of targetsX) {
+            const d = Math.abs(t - p);
+            if (d < bx) { bx = d; sdx = t - p; gx = t; }
+          }
+        }
+        if (bx > th) { sdx = 0; gx = null; }
+        for (const p of [ae.y, ae.y + (ae.h || 0) / 2, ae.y + (ae.h || 0)]) {
+          for (const t of targetsY) {
+            const d = Math.abs(t - p);
+            if (d < by) { by = d; sdy = t - p; gy = t; }
+          }
+        }
+        if (by > th) { sdy = 0; gy = null; }
+      }
+      if (gx !== null && sdx) {
+        for (const s of starts) { const m = findEl(s.id); if (m) m.x += sdx; }
+      }
+      if (gy !== null && sdy) {
+        for (const s of starts) { const m = findEl(s.id); if (m) m.y += sdy; }
+      }
+      // применяем стили
+      for (const s of starts) {
+        const m = findEl(s.id);
         const live = elNode(s.id);
-        if (live) {
+        if (m && live) {
           live.style.left = m.x + 'px';
           live.style.top = m.y + 'px';
         }
       }
+      // направляющие
+      if (gx !== null) { gv.classList.add('on'); gv.style.left = Math.round(vx + gx * sc) + 'px'; }
+      else gv.classList.remove('on');
+      if (gy !== null) { gh.classList.add('on'); gh.style.top = Math.round(vy + gy * sc) + 'px'; }
+      else gh.classList.remove('on');
       R.positionToolbar();
     };
     // слушаем на window: жест переживает выход курсора за пределы узла
@@ -348,6 +505,8 @@ function bindNodeEvents(node, ref) {
       win.removeEventListener('pointerup', end);
       win.removeEventListener('pointercancel', end);
       win.removeEventListener('lostpointercapture', end);
+      if (gv.parentNode) gv.remove();
+      if (gh.parentNode) gh.remove();
       if (moved) setState();   // коммит жеста — одна запись истории
     };
     win.addEventListener('pointermove', onMove);
@@ -376,6 +535,7 @@ function bindNodeEvents(node, ref) {
       if (ev.button > 0) return;           // только левая кнопка
       const cur = findEl(id);
       if (!cur) return;
+      if (cur.props.locked) return;        // блокировка: ресайз запрещён
       if (state.ui.selected !== cur.id) select(cur.id);
       const startX = ev.clientX, startY = ev.clientY;
       const ox = cur.x, oy = cur.y, ow = cur.w, oh = cur.h || 0;
@@ -462,6 +622,7 @@ function bindNodeEvents(node, ref) {
     if (ev.button > 0) return;              // только левая кнопка
     const cur = findEl(id);
     if (!cur) return;
+    if (cur.props.locked) return;           // блокировка: поворот запрещён
     if (state.ui.selected !== cur.id) select(cur.id);
     const live0 = elNode(id) || node;
     const b = live0.getBoundingClientRect();
@@ -1207,11 +1368,14 @@ function bindElToolbar() {
     // поддерживаем оба атрибута: data-a и data-act
     const act = btn && (btn.dataset.a || btn.dataset.act);
     if (!act || !state.ui.selected) return;
-    if (act === 'up')   layerEl(state.ui.selected, 'up');
-    if (act === 'down') layerEl(state.ui.selected, 'down');
-    if (act === 'dup')  dupSel();
-    if (act === 'del')  deleteSelection();
-    if (act === 'bg')   openBgModal(state.ui.selected);
+    if (act === 'up')     layerSel('up');
+    if (act === 'down')   layerSel('down');
+    if (act === 'dup')    dupSel();
+    if (act === 'del')    deleteSelection();
+    if (act === 'bg')     openBgModal(state.ui.selected);
+    if (act === 'lock')   toggleLock();
+    if (act === 'group')  groupSel();
+    if (act === 'ungroup') ungroupSel();
   });
 }
 
@@ -1340,12 +1504,14 @@ function bindKeyboard() {
         return;
       }
 
-      // буфер в режиме правки презентации
+      // буфер и группировка в режиме правки презентации
       if (state.ui.presentEdit && (ev.ctrlKey || ev.metaKey) && !ev.altKey) {
         const ck = ev.key.toLowerCase();
         if (ck === 'c') { ev.preventDefault(); copySel(); return; }
         if (ck === 'v') { ev.preventDefault(); pasteSel(); return; }
         if (ck === 'd') { ev.preventDefault(); dupSel(); return; }
+        if (ck === 'g' && ev.shiftKey) { ev.preventDefault(); ungroupSel(); return; }
+        if (ck === 'g') { ev.preventDefault(); groupSel(); return; }
       }
 
       // редактирование: Delete / сдвиг стрелками
@@ -1392,12 +1558,14 @@ function bindKeyboard() {
 
     if (tryUndoRedo(ev)) return;
 
-    // буфер: Ctrl+C / Ctrl+V / Ctrl+D (в полях ввода — нативные, выше по коду)
+    // буфер/группировка: Ctrl+C / V / D / G (в полях ввода — нативные, выше по коду)
     if ((ev.ctrlKey || ev.metaKey) && !ev.altKey) {
       const ck = ev.key.toLowerCase();
       if (ck === 'c') { ev.preventDefault(); copySel(); return; }
       if (ck === 'v') { ev.preventDefault(); pasteSel(); return; }
       if (ck === 'd') { ev.preventDefault(); dupSel(); return; }
+      if (ck === 'g' && ev.shiftKey) { ev.preventDefault(); ungroupSel(); return; }
+      if (ck === 'g') { ev.preventDefault(); groupSel(); return; }
     }
 
     if (ev.key === 'Escape') { select(null); return; }
@@ -1446,8 +1614,9 @@ function init() {
 }
 
 App.editor = {
-  select, toggleSelect, setSelection, startMarquee,
+  select, toggleSelect, toggleSelectMany, selectLike, setSelection, startMarquee,
   copySel, pasteSel, dupSel, deleteSelection,
+  layerSel, toggleLock, groupSel, ungroupSel,
   startEdit, commitEdit, flushCommit, bindNodeEvents,
   addText, addBlock, addImageFromSrc, duplicateEl, deleteEl, layerEl,
   addSlide, duplicateSlide, deleteSlide, gotoSlide,

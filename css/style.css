@@ -760,3 +760,20 @@ body.present-edit .hint { display: none; }
   .side-panel.right { max-height: 34vh; }
   .segmented button { padding: 7px 10px; font-size: 12px; }
 }
+
+/* ---- направляющие привязки (snap) ---- */
+.guide {
+  position: absolute;
+  background: #ff3ea5;
+  z-index: 998;
+  pointer-events: none;
+  display: none;
+}
+.guide.on { display: block; }
+.guide-v { top: 0; bottom: 0; width: 1px; }
+.guide-h { left: 0; right: 0; height: 1px; }
+
+/* ---- заблокированный элемент ---- */
+.el.locked .handle,
+.el.locked .handle-rot { display: none !important; }
+.el.locked { cursor: default; }

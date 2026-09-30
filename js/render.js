@@ -56,6 +56,7 @@ function applyElStyles(div, e) {
   const editing = div.getAttribute('contenteditable') === 'true';
   div.className = 'el ' + e.type +
     (App.isSelected(e.id) ? ' selected' : '') +
+    ((e.props && e.props.locked) ? ' locked' : '') +
     (editing ? ' editing' : '');
   div.style.left = e.x + 'px';
   div.style.top = e.y + 'px';
