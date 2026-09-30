@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>RBLX Презентации — конструктор слайдов</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖼️</text></svg>">
-  <link rel="stylesheet" href="css/style.css?v=14">
+  <link rel="stylesheet" href="css/style.css?v=15">
   <!-- Google Fonts: список шрифтов панели свойств (кириллица включена) -->
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -52,6 +52,11 @@
         <div class="slide" id="slide"></div>
       </div>
       <div class="hint">Двойной клик по тексту — редактировать · Del — удалить · Ctrl+D — дублировать · ← → — сдвиг</div>
+      <div class="zoom-bar" id="zoomBar" title="Масштаб холста: колесо мыши или кнопки">
+        <button data-zoom="out" title="Уменьшить">−</button>
+        <button data-zoom="fit" id="zoomVal" title="Вписать холст (100%)">100%</button>
+        <button data-zoom="in" title="Увеличить">＋</button>
+      </div>
     </main>
 
     <!-- Правая панель: свойства -->
@@ -114,11 +119,11 @@
   <input type="file" id="fileBgImage" accept="image/*" hidden>
   <input type="file" id="fileImport" accept="application/json,.json" hidden>
 
-  <script src="js/state.js?v=14"></script>
-  <script src="js/storage.js?v=14"></script>
-  <script src="js/render.js?v=14"></script>
-  <script src="js/editor.js?v=14"></script>
-  <script src="js/export.js?v=14"></script>
-  <script src="js/app.js?v=14"></script>
+  <script src="js/state.js?v=15"></script>
+  <script src="js/storage.js?v=15"></script>
+  <script src="js/render.js?v=15"></script>
+  <script src="js/editor.js?v=15"></script>
+  <script src="js/export.js?v=15"></script>
+  <script src="js/app.js?v=15"></script>
 </body>
 </html>

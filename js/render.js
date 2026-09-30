@@ -381,10 +381,14 @@ function fitStage() {
   const availW = area.clientWidth - 32;
   const availH = area.clientHeight - 56;
   // без потолка 1.15: сцена занимает всю свободную зону на любых мониторах
-  let scale = Math.min(availW / SW(), availH / SH());
+  let fit = Math.min(availW / SW(), availH / SH());
   // крошечное/непоказанное окно → scale ≤ 0: drag и layout ломались
-  if (!Number.isFinite(scale) || scale < 0.05) scale = 0.05;
+  if (!Number.isFinite(fit) || fit < 0.05) fit = 0.05;
+  let scale = fit * (state.ui.zoom || 1);
+  if (!Number.isFinite(scale) || scale < 0.02) scale = 0.02;
   state.ui.scale = scale;
+  const zv = $('#zoomVal');
+  if (zv) zv.textContent = Math.round((state.ui.zoom || 1) * 100) + '%';
   const w = Math.round(SW() * scale);
   const h = Math.round(SH() * scale);
   vp.style.width = w + 'px';

@@ -897,6 +897,16 @@ function moveSlide(from, pos) {
   toast(`Слайд → ${pos + 1}`);
 }
 
+/* ---------- зум холста: 1 = вписать, пределы 0.1…6 ---------- */
+function setZoom(z) {
+  const v = Math.min(6, Math.max(0.1, z));
+  if (Math.abs(v - (state.ui.zoom || 1)) < 1e-9) return;
+  setState(() => { state.ui.zoom = v; });   // ui-поле: снапшот истории не пушится
+}
+function zoomBy(f) {
+  setZoom((state.ui.zoom || 1) * f);
+}
+
 /* формат слайда (п.28): 16:9 / 4:3 / 1:1 / 9:16 — элементы масштабируются */
 function setSlideSize(key) {
   const dim = App.SIZES[key];
@@ -1822,6 +1832,23 @@ function processFile(file, cb) {
   reader.readAsDataURL(file);
 }
 
+function bindZoom() {
+  const zb = $('#zoomBar');
+  if (zb) zb.addEventListener('click', ev => {
+    const t = ev.target.closest('[data-zoom]');
+    if (!t) return;
+    const a = t.dataset.zoom;
+    if (a === 'in') zoomBy(1.1);
+    else if (a === 'out') zoomBy(1 / 1.1);
+    else if (a === 'fit') setZoom(1);
+  });
+  const sa = $('#stageArea');
+  if (sa) sa.addEventListener('wheel', ev => {
+    ev.preventDefault();                 // колесо над холстом = зум, не скролл
+    zoomBy(Math.exp(-ev.deltaY * 0.0015));
+  }, { passive: false });
+}
+
 function bindSlideBgInput() {
   const fsb = $('#fileSlideBg');
   if (!fsb) return;
@@ -2314,6 +2341,7 @@ function init() {
   $('#btnAddSlide').addEventListener('click', addSlide);
   R.bindSlideDnd();
   bindSlideBgInput();
+  bindZoom();
   bindThemeSwitch();
   bindImageInput();
   bindBgModal();
@@ -2335,6 +2363,7 @@ App.editor = {
   startEdit, commitEdit, flushCommit, bindNodeEvents, addShape, addIcon, addSticker, onPaste,
   addText, addBlock, addImageFromSrc, duplicateEl, deleteEl, layerEl,
   addSlide, duplicateSlide, deleteSlide, gotoSlide, moveSlide, setSlideSize,
+  setZoom, zoomBy,
   renderProps, scheduleThumbSave, pickImage, processFile,
   openBgModal, closeBgModal, removeBg, drawBgPreview, applyBgRemoval,
   setTheme, openPresent, closePresent, togglePresentEdit, presentStep,
