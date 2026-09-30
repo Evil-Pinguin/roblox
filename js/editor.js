@@ -59,6 +59,7 @@ function gestureScale() {
 
 /* запись правленого текста в модель — без рендера (для мутаторов) */
 function flushCommit() {
+  editSeq++;                                 // сессия закрыта — осиротевшие blur-обработчики не должны ничего коммитить
   if (!state.ui.editingId) return;
   const id = state.ui.editingId;
   const node = elNode(id);
@@ -129,9 +130,12 @@ function setSelection(ids) {
   });
 }
 
+let editSeq = 0;                             // счётчик сессий правки
 function startEdit(id) {
   const e = findEl(id);
   if (!e || e.type !== 'text') return;
+  if (e.props.locked) return;               // заблокированный текст не правится
+  if (state.ui.editingId === id) return;    // сессия уже открыта — не плодим слушатели
   const node = elNode(id);
   if (!node) return;
   setState(() => { state.ui.editingId = id; });
@@ -139,18 +143,15 @@ function startEdit(id) {
   node.setAttribute('contenteditable', 'true');
   node.style.whiteSpace = 'pre-wrap';
   node.focus();
-  // выделяем весь текст
-  const range = document.createRange();
-  range.selectNodeContents(node);
-  const sel = window.getSelection();
-  sel.removeAllRanges();
-  sel.addRange(range);
-
-  node.addEventListener('blur', () => commitEdit(), { once: true });
-  node.addEventListener('keydown', ev => {
-    ev.stopPropagation();
-    if (ev.key === 'Escape') { node.blur(); }
-  });
+  // нативное выделение браузера (слово под курсором) не трогаем —
+  // Enter/Shift+Enter и все шорткаты поля работают как в contenteditable.
+  // Коммитим только ЕСЛИ СЕССИЯ ЕЩЁ ЖИВА: focus() шлёт blur на прежнем активном
+  // узле, а у него может висеть обработчик уже закрытой правки (в презентации и
+  // на слайде — один и тот же model id, поэтому одного сравнения id мало).
+  const seq = ++editSeq;
+  node.addEventListener('blur', () => {
+    if (seq === editSeq && state.ui.editingId === id) commitEdit();
+  }, { once: true });
 }
 
 /* ============================================================
@@ -520,6 +521,17 @@ function bindNodeEvents(node, ref) {
     ev.stopPropagation();
     const cur = findEl(id);
     if (cur && cur.type === 'text') startEdit(cur.id);
+  });
+
+  // клавиатура ПРИ правке: не даём событиям утечь в глобальные
+  // шорткаты; Escape — выйти из правки (коммит + снять фокус)
+  node.addEventListener('keydown', ev => {
+    if (state.ui.editingId !== id) return;
+    ev.stopPropagation();
+    if (ev.key === 'Escape') {
+      node.blur();
+      commitEdit();   // если blur не пришёл (фокус не был) — коммит в любом случае
+    }
   });
 
   // ---- ресайз: 8 ручек ----

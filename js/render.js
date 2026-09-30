@@ -361,6 +361,7 @@ function renderAll() {
   }
   renderThumbs();
   App.editor.renderProps();
+  positionToolbar();   // тулбар всегда согласован с выделением/правкой
   positionToolbar();
 }
 
