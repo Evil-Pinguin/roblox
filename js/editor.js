@@ -737,6 +737,35 @@ function addShape(kind) {
   toast('Фигура добавлена');
 }
 
+/* Библиотека иконок и стикеров (Этап 3.22) */
+let libTab = 'icon';   // какая вкладка открыта в панели добавления
+
+function addIcon(name) {
+  const e = App.makeIcon({
+    x: 540, y: 250, w: 120, h: 120,
+    icon: name,
+    fill: state.project.theme === 'glass' ? '#0a84ff' : '#eafcff',
+  });
+  setState(() => {
+    flushCommit();
+    slideOf().elements.push(e);
+    normalizeZ(slideOf());
+    selOne(e.id);
+  });
+  toast('Иконка добавлена');
+}
+
+function addSticker(emoji) {
+  const e = App.makeSticker({ x: 560, y: 250, w: 140, h: 140, emoji });
+  setState(() => {
+    flushCommit();
+    slideOf().elements.push(e);
+    normalizeZ(slideOf());
+    selOne(e.id);
+  });
+  toast('Стикер добавлен');
+}
+
 function addImageFromSrc(src, ar) {
   const w = 460;
   const h = Math.round(w / (ar || 16 / 9));
@@ -906,6 +935,8 @@ function renderProps() {
   if (e.type === 'text') renderTextProps(panel, e);
   else if (e.type === 'image') renderImageProps(panel, e);
   else if (e.type === 'shape') renderShapeProps(panel, e);
+  else if (e.type === 'icon') renderIconProps(panel, e);
+  else if (e.type === 'sticker') renderStickerProps(panel, e);
   else renderBlockProps(panel, e);
 }
 
@@ -938,6 +969,20 @@ function renderBaseProps(panel) {
     </div>
 
     <div class="prop-group">
+      <div class="prop-group-title">Иконки и стикеры</div>
+      <div class="seg-group">
+        <button class="seg-btn ${libTab === 'icon' ? 'active' : ''}" data-lib="icon">Иконки</button>
+        <button class="seg-btn ${libTab === 'sticker' ? 'active' : ''}" data-lib="sticker">Стикеры</button>
+      </div>
+      <div class="lib-grid">
+        ${libTab === 'icon'
+          ? Object.keys(R.ICONS).map(n =>
+              `<button class="lib-cell" data-icon="${n}" title="${n}">${R.iconSvg(n, '#b8c0d0')}</button>`).join('')
+          : R.STICKERS.map(s => `<button class="lib-cell" data-sticker="${s}" title="стикер">${s}</button>`).join('')}
+      </div>
+    </div>
+
+    <div class="prop-group">
       <div class="prop-group-title">Фон слайда</div>
       <div class="swatches" id="bgSwatches">
         ${BG_PRESETS.map((p, i) =>
@@ -965,6 +1010,15 @@ function renderBaseProps(panel) {
   panel.querySelector('[data-a="slide"]').onclick = addSlide;
   panel.querySelectorAll('[data-a^="shape-"]').forEach(b => {
     b.onclick = () => addShape(b.dataset.a.slice(6));
+  });
+  panel.querySelectorAll('[data-lib]').forEach(b => {
+    b.onclick = () => { libTab = b.dataset.lib; renderBaseProps(panel); };
+  });
+  panel.querySelectorAll('.lib-grid [data-icon]').forEach(b => {
+    b.onclick = () => addIcon(b.dataset.icon);
+  });
+  panel.querySelectorAll('.lib-grid [data-sticker]').forEach(b => {
+    b.onclick = () => addSticker(b.dataset.sticker);
   });
   panel.querySelector('[data-a="dup-slide"]').onclick = () => duplicateSlide(state.ui.current);
   panel.querySelector('[data-a="del-slide"]').onclick = () => deleteSlide(state.ui.current);
@@ -1199,7 +1253,89 @@ function applyTextStyle(e) {
   scheduleThumbSave();
 }
 
+/* ---------- Обрезка изображения (режим панели, без state) ---------- */
+let cropDraft = null;   // { id, base, zoom, px, py, orig }
+
+/* кадр из настроек: cw/ch — доля базовой области в %, px/py — позиция
+   (0..100, 50 = по центру). cw=ch=100, px=py=50 → тождество (без изменений). */
+function cropFromDraft(d) {
+  const b = d.base;
+  const w = b.w * d.cw / 100, h = b.h * d.ch / 100;
+  const x = b.x + (b.w - w) * d.px / 100;
+  const y = b.y + (b.h - h) * d.py / 100;
+  return {
+    x: Math.max(0, Math.min(100 - w, x)),
+    y: Math.max(0, Math.min(100 - h, y)),
+    w, h,
+  };
+}
+
+function cropEnter(e) {
+  cropDraft = {
+    id: e.id,
+    base: e.props.crop ? { ...e.props.crop } : { x: 0, y: 0, w: 100, h: 100 },
+    cw: 100, ch: 100, px: 50, py: 50,
+    orig: { crop: e.props.crop ? { ...e.props.crop } : null, ar: e.props.ar, h: e.h },
+  };
+  renderProps();
+}
+
+function cropLive(e) {
+  const c = cropFromDraft(cropDraft);
+  e.props.crop = c;
+  if (e.props.origAr == null) e.props.origAr = e.props.ar || (e.w / Math.max(1, e.h));
+  e.props.ar = e.props.origAr * (c.w / c.h);
+  e.h = Math.max(24, Math.round(e.w / e.props.ar));
+  const n = elNode(e.id);
+  if (n) {
+    R.applyElStyles(n, e);
+    n.style.width = e.w + 'px';
+    n.style.height = e.h + 'px';
+    R.positionToolbar();
+  }
+}
+
+function cropApply(e) {
+  setState(() => {
+    const c = cropFromDraft(cropDraft);
+    if (e.props.origAr == null) e.props.origAr = e.props.ar || (e.w / Math.max(1, e.h));
+    const full = c.x === 0 && c.y === 0 && c.w === 100 && c.h === 100;
+    e.props.crop = full ? null : c;
+    e.props.ar = full ? e.props.origAr : e.props.origAr * (c.w / c.h);
+    e.h = Math.max(24, Math.round(e.w / e.props.ar));
+    cropDraft = null;
+  });
+}
+
+function cropCancel(e) {
+  const o = cropDraft.orig;
+  e.props.crop = o.crop;
+  e.props.ar = o.ar;
+  e.h = o.h;
+  cropDraft = null;
+  const n = elNode(e.id);
+  if (n) {
+    R.applyElStyles(n, e);
+    n.style.width = e.w + 'px';
+    n.style.height = e.h + 'px';
+    R.positionToolbar();
+  }
+  renderProps();
+}
+
+function cropReset(e) {
+  cropDraft = null;
+  setState(() => {
+    if (e.props.origAr != null) e.props.ar = e.props.origAr;
+    e.props.crop = null;
+    e.h = Math.max(24, Math.round(e.w / (e.props.ar || 1)));
+  });
+}
+
 function renderImageProps(panel, e) {
+  if (cropDraft && cropDraft.id === e.id) { renderCropPanel(panel, e); return; }
+  const P = e.props;
+  const hex = (v, fb) => (/^#[0-9a-f]{6}$/i.test(v || '') ? v : fb);
   panel.innerHTML = `
     <div class="prop-group">
       <div class="prop-group-title">Фотография</div>
@@ -1207,23 +1343,57 @@ function renderImageProps(panel, e) {
         <button class="seg-btn" id="pReplace">⇄ Заменить</button>
         <button class="seg-btn" id="pBg" style="color:#ffd166">✨ Удалить фон</button>
       </div>
-      ${e.props.originalSrc ? `<button class="seg-btn" id="pRestore" style="width:100%">⟲ Вернуть оригинал</button>` : ''}
+      ${P.originalSrc ? `<button class="seg-btn" id="pRestore" style="width:100%">⟲ Вернуть оригинал</button>` : ''}
+    </div>
+
+    <div class="prop-group">
+      <div class="prop-group-title">Кадр</div>
+      <button class="seg-btn" id="pCropOpen" style="width:100%">✂ Обрезать</button>
+      ${P.crop ? `<button class="seg-btn" id="pCropReset" style="width:100%">⟲ Сброс кадра</button>` : ''}
     </div>
 
     <div class="prop-group">
       <div class="prop-group-title">Внешний вид</div>
       <div class="prop-row">
-        <label>Скругление</label>
-        <input type="range" id="pRadius" min="0" max="70" value="${e.props.radius || 0}">
+        <label>Форма</label>
+        <div class="seg-group" style="flex:1.2">
+          <button class="seg-btn ${P.maskShape !== 'circle' ? 'active' : ''}" data-mask="rect" title="Прямоугольник">▢</button>
+          <button class="seg-btn ${P.maskShape === 'circle' ? 'active' : ''}" data-mask="circle" title="Круг">◯</button>
+        </div>
       </div>
+      ${P.maskShape !== 'circle' ? `
+      <div class="prop-row">
+        <label>Скругление</label>
+        <input type="range" id="pRadius" min="0" max="70" value="${P.radius || 0}">
+      </div>` : ''}
       <div class="prop-row">
         <label>Ширина</label>
         <input type="range" id="pW" min="80" max="900" value="${e.w}">
       </div>
       <div class="prop-row">
         <label>Прозрачность</label>
-        <input type="range" id="pOpacity" min="10" max="100" value="${Math.round((e.props.opacity ?? 1) * 100)}">
+        <input type="range" id="pOpacity" min="10" max="100" value="${Math.round((P.opacity ?? 1) * 100)}">
       </div>
+    </div>
+
+    <div class="prop-group">
+      <div class="prop-group-title">Фильтры</div>
+      <div class="prop-row">
+        <label>Яркость</label>
+        <input type="range" id="pBright" min="50" max="150" step="1" value="${P.brightness != null ? P.brightness : 100}">
+        <output id="pBrightOut">${P.brightness != null ? P.brightness : 100}</output>
+      </div>
+      <div class="prop-row">
+        <label>Контраст</label>
+        <input type="range" id="pContrast" min="50" max="150" step="1" value="${P.contrast != null ? P.contrast : 100}">
+        <output id="pContrastOut">${P.contrast != null ? P.contrast : 100}</output>
+      </div>
+      <div class="prop-row">
+        <label>Размытие</label>
+        <input type="range" id="pBlur" min="0" max="20" step="0.5" value="${P.blur || 0}">
+        <output id="pBlurOut">${P.blur || 0}</output>
+      </div>
+      <button class="seg-btn" id="pFilterReset" style="width:100%">⟲ Сброс фильтров</button>
     </div>
 
     <div class="prop-group">
@@ -1234,6 +1404,7 @@ function renderImageProps(panel, e) {
     </div>`;
 
   const nodeOf = () => elNode(e.id);
+  const live = () => { const n = nodeOf(); if (n) R.applyElStyles(n, e); scheduleThumbSave(); };
 
   panel.querySelector('#pReplace').onclick = () => pickImage(true, e.id);
   panel.querySelector('#pBg').onclick = () => openBgModal(e.id);
@@ -1245,10 +1416,14 @@ function renderImageProps(panel, e) {
     });
     toast('Оригинал восстановлен');
   };
+  panel.querySelector('#pCropOpen').onclick = () => cropEnter(e);
+  const cropRs = panel.querySelector('#pCropReset');
+  if (cropRs) cropRs.onclick = () => cropReset(e);
 
-  bindRange(panel, '#pRadius', null, v => {
-    e.props.radius = +v; const n = nodeOf(); if (n) n.style.borderRadius = v + 'px';
+  panel.querySelectorAll('[data-mask]').forEach(b => {
+    b.onclick = () => setState(() => { e.props.maskShape = b.dataset.mask; });
   });
+  bindRange(panel, '#pRadius', null, v => { e.props.radius = +v; live(); });
   bindRange(panel, '#pW', null, v => {
     const nw = +v; const ar = e.props.ar || (e.w / e.h) || 1;
     e.w = nw; e.h = Math.round(nw / ar);
@@ -1256,11 +1431,54 @@ function renderImageProps(panel, e) {
     if (n) { n.style.width = e.w + 'px'; n.style.height = e.h + 'px'; }
     R.positionToolbar();
   });
-  bindRange(panel, '#pOpacity', null, v => {
-    e.props.opacity = v / 100; const n = nodeOf(); if (n) n.style.opacity = e.props.opacity;
-  });
+  bindRange(panel, '#pOpacity', null, v => { e.props.opacity = v / 100; live(); });
+
+  bindRange(panel, '#pBright', '#pBrightOut', v => { e.props.brightness = +v; live(); });
+  bindRange(panel, '#pContrast', '#pContrastOut', v => { e.props.contrast = +v; live(); });
+  bindRange(panel, '#pBlur', '#pBlurOut', v => { e.props.blur = +v; live(); });
+  panel.querySelector('#pFilterReset').onclick = () => {
+    setState(() => { e.props.brightness = 100; e.props.contrast = 100; e.props.blur = 0; });
+  };
+
   panel.querySelector('#pDup').onclick = () => dupSel();
   panel.querySelector('#pDel').onclick = () => deleteSelection();
+}
+
+function renderCropPanel(panel, e) {
+  const d = cropDraft;
+  panel.innerHTML = `
+    <div class="prop-group">
+      <div class="prop-group-title">Обрезка</div>
+      <div class="prop-row">
+        <label>Ширина кадра</label>
+        <input type="range" id="pCropW" min="10" max="100" step="1" value="${d.cw}">
+        <output id="pCropWOut">${d.cw}%</output>
+      </div>
+      <div class="prop-row">
+        <label>Высота кадра</label>
+        <input type="range" id="pCropH" min="10" max="100" step="1" value="${d.ch}">
+        <output id="pCropHOut">${d.ch}%</output>
+      </div>
+      <div class="prop-row">
+        <label>Сдвиг по X</label>
+        <input type="range" id="pCropX" min="0" max="100" step="1" value="${d.px}">
+      </div>
+      <div class="prop-row">
+        <label>Сдвиг по Y</label>
+        <input type="range" id="pCropY" min="0" max="100" step="1" value="${d.py}">
+      </div>
+      <div class="seg-group">
+        <button class="seg-btn" id="pCropApply" style="color:#30d158">✔ Применить</button>
+        <button class="seg-btn" id="pCropCancel">✕ Отмена</button>
+      </div>
+    </div>`;
+
+  bindRange(panel, '#pCropW', '#pCropWOut', v => { d.cw = +v; cropLive(e); });
+  bindRange(panel, '#pCropH', '#pCropHOut', v => { d.ch = +v; cropLive(e); });
+  bindRange(panel, '#pCropX', null, v => { d.px = +v; cropLive(e); });
+  bindRange(panel, '#pCropY', null, v => { d.py = +v; cropLive(e); });
+  panel.querySelector('#pCropApply').onclick = () => cropApply(e);
+  panel.querySelector('#pCropCancel').onclick = () => cropCancel(e);
 }
 
 function renderShapeProps(panel, e) {
@@ -1337,6 +1555,91 @@ function renderShapeProps(panel, e) {
     strokeC.addEventListener('change', () => setState());
   }
   bindRange(panel, '#pRadius', '#pRadiusOut', v => { e.props.radius = +v; live(); });
+  bindRange(panel, '#pOpacity', null, v => { e.props.opacity = v / 100; live(); });
+  panel.querySelector('#pDup').onclick = () => dupSel();
+  panel.querySelector('#pDel').onclick = () => deleteSelection();
+}
+
+function renderIconProps(panel, e) {
+  const P = e.props;
+  const hex = (v, fb) => (/^#[0-9a-f]{6}$/i.test(v || '') ? v : fb);
+  panel.innerHTML = `
+    <div class="prop-group">
+      <div class="prop-group-title">Иконка</div>
+      <div class="lib-grid" id="pIconGrid">
+        ${Object.keys(R.ICONS).map(n =>
+          `<button class="lib-cell ${n === P.icon ? 'active' : ''}" data-icon="${n}" title="${n}">${R.iconSvg(n, P.fill)}</button>`).join('')}
+      </div>
+      <div class="prop-row">
+        <label>Цвет</label>
+        <input type="color" id="pIconColor" value="${hex(P.fill, '#eafcff')}">
+      </div>
+      <div class="swatches" id="pIcSw">
+        ${SWATCHES.map(c => `<div class="swatch" data-c="${c}" style="background:${c}"></div>`).join('')}
+      </div>
+      <div class="prop-row">
+        <label>Прозрачность</label>
+        <input type="range" id="pOpacity" min="10" max="100" value="${Math.round((P.opacity ?? 1) * 100)}">
+      </div>
+    </div>
+    <div class="prop-group">
+      <div class="seg-group">
+        <button class="seg-btn" id="pDup">⧉ Дублировать</button>
+        <button class="seg-btn" id="pDel" style="color:#ff453a">🗑 Удалить</button>
+      </div>
+    </div>`;
+
+  const live = () => { const n = elNode(e.id); if (n) R.applyElStyles(n, e); scheduleThumbSave(); };
+  panel.querySelectorAll('#pIconGrid [data-icon]').forEach(b => {
+    b.onclick = () => setState(() => { e.props.icon = b.dataset.icon; });
+  });
+  const col = panel.querySelector('#pIconColor');
+  col.oninput = ev => { e.props.fill = ev.target.value; live(); };
+  col.addEventListener('change', () => setState());
+  panel.querySelectorAll('#pIcSw .swatch').forEach(sw => {
+    sw.onclick = () => { const c = sw.dataset.c; setState(() => { e.props.fill = c; }); };
+  });
+  bindRange(panel, '#pOpacity', null, v => { e.props.opacity = v / 100; live(); });
+  panel.querySelector('#pDup').onclick = () => dupSel();
+  panel.querySelector('#pDel').onclick = () => deleteSelection();
+}
+
+function renderStickerProps(panel, e) {
+  const P = e.props;
+  panel.innerHTML = `
+    <div class="prop-group">
+      <div class="prop-group-title">Стикер</div>
+      <div class="lib-grid" id="pStickerGrid">
+        ${R.STICKERS.map(s =>
+          `<button class="lib-cell ${s === P.emoji ? 'active' : ''}" data-sticker="${s}">${s}</button>`).join('')}
+      </div>
+      <div class="prop-row">
+        <label>Размер</label>
+        <input type="range" id="pSize" min="60" max="300" step="5" value="${e.w}">
+        <output id="pSizeOut">${e.w}</output>
+      </div>
+      <div class="prop-row">
+        <label>Прозрачность</label>
+        <input type="range" id="pOpacity" min="10" max="100" value="${Math.round((P.opacity ?? 1) * 100)}">
+      </div>
+    </div>
+    <div class="prop-group">
+      <div class="seg-group">
+        <button class="seg-btn" id="pDup">⧉ Дублировать</button>
+        <button class="seg-btn" id="pDel" style="color:#ff453a">🗑 Удалить</button>
+      </div>
+    </div>`;
+
+  const live = () => { const n = elNode(e.id); if (n) R.applyElStyles(n, e); scheduleThumbSave(); };
+  panel.querySelectorAll('#pStickerGrid [data-sticker]').forEach(b => {
+    b.onclick = () => setState(() => { e.props.emoji = b.dataset.sticker; });
+  });
+  bindRange(panel, '#pSize', '#pSizeOut', v => {
+    e.w = +v; e.h = +v; live();
+    const n = elNode(e.id);
+    if (n) { n.style.width = e.w + 'px'; n.style.height = e.h + 'px'; }
+    R.positionToolbar();
+  });
   bindRange(panel, '#pOpacity', null, v => { e.props.opacity = v / 100; live(); });
   panel.querySelector('#pDup').onclick = () => dupSel();
   panel.querySelector('#pDel').onclick = () => deleteSelection();
@@ -1927,7 +2230,7 @@ App.editor = {
   select, toggleSelect, toggleSelectMany, selectLike, setSelection, startMarquee,
   copySel, pasteSel, dupSel, deleteSelection,
   layerSel, toggleLock, groupSel, ungroupSel,
-  startEdit, commitEdit, flushCommit, bindNodeEvents, addShape, onPaste,
+  startEdit, commitEdit, flushCommit, bindNodeEvents, addShape, addIcon, addSticker, onPaste,
   addText, addBlock, addImageFromSrc, duplicateEl, deleteEl, layerEl,
   addSlide, duplicateSlide, deleteSlide, gotoSlide,
   renderProps, scheduleThumbSave, pickImage, processFile,

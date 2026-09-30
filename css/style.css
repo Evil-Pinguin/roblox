@@ -453,8 +453,11 @@ button { font-family: var(--font); cursor: pointer; }
   outline: 2px dashed var(--accent-2);
   background: rgba(127, 127, 127, 0.12);
 }
-.el.image { padding: 0; }
+.el.image { padding: 0; overflow: hidden; }
 .el.image img {
+  position: absolute;
+  left: 0;
+  top: 0;
   display: block;
   width: 100%;
   height: 100%;
@@ -463,6 +466,34 @@ button { font-family: var(--font); cursor: pointer; }
   pointer-events: none;
   -webkit-user-drag: none;
 }
+
+/* ---- Иконки и стикеры ---- */
+.el.icon svg.icon-svg { display: block; width: 100%; height: 100%; overflow: visible; pointer-events: none; }
+.el.sticker { user-select: none; line-height: 1; }
+
+/* сетка библиотеки в панели */
+.lib-grid {
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 5px;
+}
+.lib-cell {
+  aspect-ratio: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px;
+  border-radius: 9px;
+  border: 1px solid var(--grid-line);
+  background: var(--btn-bg);
+  color: var(--txt);
+  font-size: 17px;
+  line-height: 1;
+  transition: all .12s;
+}
+.lib-cell:hover { border-color: var(--accent); transform: translateY(-1px); }
+.lib-cell.active { border-color: var(--accent); background: rgba(127, 127, 127, .18); }
+.lib-cell svg { width: 20px; height: 20px; }
 /* ---- рамка выделения (marquee) ---- */
 .marquee {
   position: absolute;
