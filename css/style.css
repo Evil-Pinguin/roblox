@@ -539,6 +539,16 @@ button { font-family: var(--font); cursor: pointer; }
 .el .handle-rot:active { cursor: grabbing; }
 
 /* карточка-подложка (тип «блок») */
+/* ---- Фигуры (тип shape): всё рисует SVG внутри узла ---- */
+.el.shape svg.shape-svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+/* карточка-подложка (тип «блок») */
 .el.block {
   background: rgba(127, 127, 127, 0.14);
   border: 1.5px solid rgba(127, 127, 127, 0.35);

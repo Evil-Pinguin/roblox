@@ -52,6 +52,46 @@ function setTextSafe(div, text) {
 }
 
 /* ---------- применить данные элемента к существующему узлу ---------- */
+/* SVG-содержимое фигуры: координаты в %/px — живой ресайз не ломает,
+   viewBox включается только у звезды (ей нужна polygon-геометрия 0–100). */
+function applyShapeSvg(div, e) {
+  const P = e.props;
+  let svg = div.querySelector(':scope > svg.shape-svg');
+  if (!svg) {
+    svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    svg.setAttribute('class', 'shape-svg');
+    div.insertBefore(svg, div.firstChild);
+  }
+  const kind = P.shape || 'rect';
+  const fill = P.fill || '#4facfe';
+  const sw = +P.strokeWidth || 0;
+  const strokeAttr = sw > 0 ? ` stroke="${P.stroke || '#000000'}" stroke-width="${sw}"` : '';
+
+  if (kind === 'star') {
+    svg.setAttribute('viewBox', '0 0 100 100');
+    svg.setAttribute('preserveAspectRatio', 'none');
+    svg.innerHTML = `<polygon points="50,2 61.8,37.3 98.9,37.3 68.9,59.1 80.9,94.1 50,72 19.1,94.1 31.1,59.1 1.1,37.3 38.2,37.3" fill="${fill}"` +
+      (sw > 0 ? ` stroke="${P.stroke || '#000000'}" stroke-width="${sw}" stroke-linejoin="round" vector-effect="non-scaling-stroke"` : '') + `/>`;
+    return;
+  }
+
+  svg.removeAttribute('viewBox');
+  svg.removeAttribute('preserveAspectRatio');
+  if (kind === 'oval') {
+    svg.innerHTML = `<ellipse cx="50%" cy="50%" rx="50%" ry="50%" fill="${fill}"${strokeAttr}/>`;
+  } else if (kind === 'line') {
+    svg.innerHTML = `<line x1="1%" y1="50%" x2="99%" y2="50%" stroke="${fill}" stroke-width="${sw}" stroke-linecap="round"/>`;
+  } else if (kind === 'arrow') {
+    svg.innerHTML =
+      `<line x1="1%" y1="50%" x2="78%" y2="50%" stroke="${fill}" stroke-width="${sw}" stroke-linecap="round"/>` +
+      `<line x1="76%" y1="26%" x2="99%" y2="50%" stroke="${fill}" stroke-width="${sw}" stroke-linecap="round"/>` +
+      `<line x1="76%" y1="74%" x2="99%" y2="50%" stroke="${fill}" stroke-width="${sw}" stroke-linecap="round"/>`;
+  } else {
+    const r = Math.max(0, +P.radius || 0);
+    svg.innerHTML = `<rect x="0" y="0" width="100%" height="100%" rx="${r}" ry="${r}" fill="${fill}"${strokeAttr}/>`;
+  }
+}
+
 function applyElStyles(div, e) {
   const editing = div.getAttribute('contenteditable') === 'true';
   div.className = 'el ' + e.type +
@@ -97,6 +137,10 @@ function applyElStyles(div, e) {
     div.style.borderRadius = (e.props.radius || 0) + 'px';
     const img = div.querySelector('img');
     if (img && img.getAttribute('src') !== e.props.src) img.src = e.props.src;
+  } else if (e.type === 'shape') {
+    div.style.width = e.w + 'px';
+    div.style.height = e.h + 'px';
+    applyShapeSvg(div, e);
   } else if (e.type === 'block') {
     div.style.width = e.w + 'px';
     div.style.height = e.h + 'px';

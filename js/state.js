@@ -19,6 +19,7 @@ const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
 function defaultProps(type) {
   if (type === 'image') return { src: '', originalSrc: null, radius: 24, opacity: 1, ar: 16 / 9 };
   if (type === 'block') return { fill: 'rgba(127,127,127,.14)', radius: 22, opacity: 1 };
+  if (type === 'shape') return { shape: 'rect', fill: '#4facfe', stroke: '#000000', strokeWidth: 0, radius: 0, opacity: 1 };
   return { text: '', fontSize: 36, color: '#eafcff', weight: 700, italic: false,
            underline: false, align: 'left', fontFamily: '', opacity: 1,
            lineHeight: 1.3, letterSpacing: 0,
@@ -85,9 +86,27 @@ function makeBlock(o = {}) {
   };
 }
 
+function makeShape(o = {}) {
+  return {
+    id: o.id || uid(), type: 'shape',
+    x: num(o.x, 300), y: num(o.y, 240), w: num(o.w, 300), h: num(o.h, 200),
+    rotation: num(o.rotation, 0), zIndex: num(o.zIndex, 0),
+    props: {
+      ...defaultProps('shape'),
+      shape: ['rect', 'oval', 'line', 'arrow', 'star'].includes(o.shape) ? o.shape : 'rect',
+      fill: o.fill || '#4facfe',
+      stroke: o.stroke || '#000000',
+      strokeWidth: num(o.strokeWidth, 0),
+      radius: num(o.radius, 0),
+      opacity: num(o.opacity, 1),
+    },
+  };
+}
+
 function makeElement(type, o = {}) {
   if (type === 'image') return makeImage(o);
   if (type === 'block') return makeBlock(o);
+  if (type === 'shape') return makeShape(o);
   return makeText(o);
 }
 
@@ -238,7 +257,7 @@ function normalizeElement(raw, i) {
   for (const k of Object.keys(raw)) {
     if (!GEOM.includes(k)) { flat[k] = raw[k]; delete raw[k]; }
   }
-  const type = ['text', 'image', 'block'].includes(raw.type) ? raw.type : 'text';
+  const type = ['text', 'image', 'block', 'shape'].includes(raw.type) ? raw.type : 'text';
   const props = { ...flat, ...(raw.props && typeof raw.props === 'object' ? raw.props : {}) };
   return {
     id: raw.id || uid(),
@@ -310,6 +329,7 @@ App.makeElement = makeElement;
 App.makeText = makeText;
 App.makeImage = makeImage;
 App.makeBlock = makeBlock;
+App.makeShape = makeShape;
 App.makeSlide = makeSlide;
 App.remapTextColors = remapTextColors;
 

@@ -109,7 +109,7 @@ function expectHits(L, T, Rr, B) {
   key('c', { ctrlKey: true });
   check('Ctrl+C скопировал', doc.querySelector('#toast').textContent.includes('Скопировано'));
 
-  key('v', { ctrlKey: true });
+  doc.dispatchEvent(new window.Event('paste', { bubbles: true }));   // путь Ctrl+V теперь через событие paste
   check('Ctrl+V вставил копии', App.slideOf().elements.length === n0 + ids.length);
   const pasted = selIds();
   check('выделены вставленные', pasted.length === ids.length &&
@@ -161,7 +161,7 @@ function expectHits(L, T, Rr, B) {
   const ta = doc.querySelector('#propsPanel #pText');
   if (ta) {
     const n0 = App.slideOf().elements.length;
-    ta.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'v', ctrlKey: true, bubbles: true }));
+    ta.dispatchEvent(new window.Event('paste', { bubbles: true }));   // paste в поле — нативный, не перехватываем
     check('Ctrl+V в поле не вставляет в слайд', App.slideOf().elements.length === n0);
     ta.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'd', ctrlKey: true, bubbles: true }));
     check('Ctrl+D в поле не дублирует', App.slideOf().elements.length === n0);

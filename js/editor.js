@@ -707,6 +707,36 @@ function addBlock() {
   });
 }
 
+/* Фигуры (Этап 3.20): rect / oval / line / arrow / star */
+const SHAPE_DIMS = {
+  rect:  { w: 300, h: 200, strokeWidth: 0, radius: 14 },
+  oval:  { w: 240, h: 240, strokeWidth: 0, radius: 0 },
+  line:  { w: 320, h: 48, strokeWidth: 5, radius: 0 },
+  arrow: { w: 300, h: 72, strokeWidth: 5, radius: 0 },
+  star:  { w: 240, h: 240, strokeWidth: 0, radius: 0 },
+};
+
+function addShape(kind) {
+  const dim = SHAPE_DIMS[kind] || SHAPE_DIMS.rect;
+  const fill = state.project.theme === 'glass' ? '#0a84ff' : '#00f0ff';
+  const e = App.makeShape({
+    kind,
+    shape: SHAPE_DIMS[kind] ? kind : 'rect',
+    x: Math.round(480 - dim.w / 2 + (slideOf().elements.length % 3) * 18),
+    y: Math.round(320 - dim.h / 2),
+    w: dim.w, h: dim.h, fill,
+    strokeWidth: dim.strokeWidth, radius: dim.radius,
+  });
+  setState(() => {
+    flushCommit();
+    const arr = slideOf().elements;
+    arr.push(e);
+    normalizeZ(slideOf());
+    selOne(e.id);
+  });
+  toast('Фигура добавлена');
+}
+
 function addImageFromSrc(src, ar) {
   const w = 460;
   const h = Math.round(w / (ar || 16 / 9));
@@ -875,6 +905,7 @@ function renderProps() {
   if (!e) { renderBaseProps(panel); return; }
   if (e.type === 'text') renderTextProps(panel, e);
   else if (e.type === 'image') renderImageProps(panel, e);
+  else if (e.type === 'shape') renderShapeProps(panel, e);
   else renderBlockProps(panel, e);
 }
 
@@ -890,6 +921,19 @@ function renderBaseProps(panel) {
       <div class="seg-group">
         <button class="seg-btn" data-a="block">＋ Блок</button>
         <button class="seg-btn" data-a="slide">＋ Слайд</button>
+      </div>
+    </div>
+
+    <div class="prop-group">
+      <div class="prop-group-title">Фигуры</div>
+      <div class="seg-group">
+        <button class="seg-btn" data-a="shape-rect" title="Прямоугольник">▭ Прям.</button>
+        <button class="seg-btn" data-a="shape-oval" title="Круг">◯ Круг</button>
+        <button class="seg-btn" data-a="shape-line" title="Линия">─ Линия</button>
+      </div>
+      <div class="seg-group">
+        <button class="seg-btn" data-a="shape-arrow" title="Стрелка">➔ Стрелка</button>
+        <button class="seg-btn" data-a="shape-star" title="Звезда">★ Звезда</button>
       </div>
     </div>
 
@@ -919,6 +963,9 @@ function renderBaseProps(panel) {
   panel.querySelector('[data-a="image"]').onclick = () => pickImage(false);
   panel.querySelector('[data-a="block"]').onclick = addBlock;
   panel.querySelector('[data-a="slide"]').onclick = addSlide;
+  panel.querySelectorAll('[data-a^="shape-"]').forEach(b => {
+    b.onclick = () => addShape(b.dataset.a.slice(6));
+  });
   panel.querySelector('[data-a="dup-slide"]').onclick = () => duplicateSlide(state.ui.current);
   panel.querySelector('[data-a="del-slide"]').onclick = () => deleteSlide(state.ui.current);
   panel.querySelectorAll('#bgSwatches .swatch').forEach(sw => {
@@ -1216,6 +1263,85 @@ function renderImageProps(panel, e) {
   panel.querySelector('#pDel').onclick = () => deleteSelection();
 }
 
+function renderShapeProps(panel, e) {
+  const P = e.props;
+  const kind = P.shape || 'rect';
+  const isLine = kind === 'line' || kind === 'arrow';
+  const hex = (v, fb) => (/^#[0-9a-f]{6}$/i.test(v || '') ? v : fb);
+  panel.innerHTML = `
+    <div class="prop-group">
+      <div class="prop-group-title">Фигура</div>
+      <div class="seg-group">
+        <button class="seg-btn ${kind === 'rect' ? 'active' : ''}" data-sh="rect" title="Прямоугольник">▭</button>
+        <button class="seg-btn ${kind === 'oval' ? 'active' : ''}" data-sh="oval" title="Круг">◯</button>
+        <button class="seg-btn ${kind === 'line' ? 'active' : ''}" data-sh="line" title="Линия">─</button>
+        <button class="seg-btn ${kind === 'arrow' ? 'active' : ''}" data-sh="arrow" title="Стрелка">➔</button>
+        <button class="seg-btn ${kind === 'star' ? 'active' : ''}" data-sh="star" title="Звезда">★</button>
+      </div>
+      <div class="prop-row">
+        <label>${isLine ? 'Цвет' : 'Заливка'}</label>
+        <input type="color" id="pFill" value="${hex(P.fill, '#4facfe')}">
+      </div>
+      <div class="swatches" id="pShSw">
+        ${SWATCHES.map(c => `<div class="swatch" data-c="${c}" style="background:${c}"></div>`).join('')}
+      </div>
+      ${isLine ? `
+      <div class="prop-row">
+        <label>Толщина</label>
+        <input type="range" id="pStrokeW" min="1" max="30" step="1" value="${Math.max(1, P.strokeWidth || 5)}">
+        <output id="pStrokeWOut">${P.strokeWidth}</output>
+      </div>` : `
+      <div class="prop-row">
+        <label>Обводка</label>
+        <input type="range" id="pStrokeW" min="0" max="12" step="0.5" value="${P.strokeWidth}">
+        <output id="pStrokeWOut">${P.strokeWidth}</output>
+        <input type="color" id="pStrokeColor" value="${hex(P.stroke, '#000000')}">
+      </div>
+      ${kind === 'rect' ? `
+      <div class="prop-row">
+        <label>Скругление</label>
+        <input type="range" id="pRadius" min="0" max="70" step="1" value="${P.radius}">
+        <output id="pRadiusOut">${P.radius}</output>
+      </div>` : ''}`}
+      <div class="prop-row">
+        <label>Прозрачность</label>
+        <input type="range" id="pOpacity" min="10" max="100" value="${Math.round((P.opacity ?? 1) * 100)}">
+      </div>
+    </div>
+    <div class="prop-group">
+      <div class="seg-group">
+        <button class="seg-btn" id="pDup">⧉ Дублировать</button>
+        <button class="seg-btn" id="pDel" style="color:#ff453a">🗑 Удалить</button>
+      </div>
+    </div>`;
+
+  const live = () => {
+    const n = elNode(e.id);
+    if (n) R.applyElStyles(n, e);
+    scheduleThumbSave();
+  };
+
+  panel.querySelectorAll('[data-sh]').forEach(b => {
+    b.onclick = () => setState(() => { e.props.shape = b.dataset.sh; });
+  });
+  const fillInp = panel.querySelector('#pFill');
+  fillInp.oninput = ev => { e.props.fill = ev.target.value; live(); };
+  fillInp.addEventListener('change', () => setState());
+  panel.querySelectorAll('#pShSw .swatch').forEach(sw => {
+    sw.onclick = () => { const c = sw.dataset.c; setState(() => { e.props.fill = c; }); };
+  });
+  bindRange(panel, '#pStrokeW', '#pStrokeWOut', v => { e.props.strokeWidth = +v; live(); });
+  const strokeC = panel.querySelector('#pStrokeColor');
+  if (strokeC) {
+    strokeC.oninput = ev => { e.props.stroke = ev.target.value; live(); };
+    strokeC.addEventListener('change', () => setState());
+  }
+  bindRange(panel, '#pRadius', '#pRadiusOut', v => { e.props.radius = +v; live(); });
+  bindRange(panel, '#pOpacity', null, v => { e.props.opacity = v / 100; live(); });
+  panel.querySelector('#pDup').onclick = () => dupSel();
+  panel.querySelector('#pDel').onclick = () => deleteSelection();
+}
+
 function renderBlockProps(panel, e) {
   panel.innerHTML = `
     <div class="prop-group">
@@ -1337,6 +1463,9 @@ function bindImageInput() {
   /* drag & drop на слайд */
   document.addEventListener('dragover', ev => ev.preventDefault());
   document.addEventListener('drop', ev => {
+    const t = ev.target;
+    if (t && typeof t.matches === 'function' &&
+        (t.matches('input, textarea, select') || t.isContentEditable)) return;   // в поле — нативно
     ev.preventDefault();
     const file = ev.dataTransfer?.files?.[0];
     if (file) processFile(file, (src, ar) => { addImageFromSrc(src, ar); toast('Фото добавлено'); });
@@ -1629,7 +1758,42 @@ function tryUndoRedo(ev) {
   return false;
 }
 
+/* Ctrl+V через событие paste: если в системном буфере изображение —
+   вставляем фото, иначе — внутренний буфер элементов.
+   В полях ввода (input/textarea/contenteditable) не мешаем нативной вставке. */
+function onPaste(ev) {
+  const t = ev.target;
+  if (t && typeof t.matches === 'function' &&
+      (t.matches('input, textarea, select') || t.isContentEditable)) return;
+  const cd = ev.clipboardData;
+  ev.preventDefault();
+  if (cd) {
+    let file = null;
+    const files = cd.files;
+    if (files) {
+      for (let i = 0; i < files.length; i++) {
+        if (files[i].type && files[i].type.startsWith('image/')) { file = files[i]; break; }
+      }
+    }
+    if (!file && cd.items) {
+      for (let i = 0; i < cd.items.length; i++) {
+        const it = cd.items[i];
+        if (it.kind === 'file' && it.type && it.type.startsWith('image/') && it.getAsFile) {
+          const f = it.getAsFile();
+          if (f && f.type.startsWith('image/')) { file = f; break; }
+        }
+      }
+    }
+    if (file) {
+      processFile(file, (src, ar) => { addImageFromSrc(src, ar); toast('Фото вставлено из буфера'); });
+      return;
+    }
+  }
+  pasteSel();   // системного изображения нет — внутренний буфер элементов
+}
+
 function bindKeyboard() {
+  document.addEventListener('paste', onPaste);
   document.addEventListener('keydown', ev => {
     const t = ev.target;
     const inField = !!(t && typeof t.matches === 'function' &&
@@ -1656,7 +1820,6 @@ function bindKeyboard() {
       if (state.ui.presentEdit && (ev.ctrlKey || ev.metaKey) && !ev.altKey) {
         const ck = ev.key.toLowerCase();
         if (ck === 'c') { ev.preventDefault(); copySel(); return; }
-        if (ck === 'v') { ev.preventDefault(); pasteSel(); return; }
         if (ck === 'd') { ev.preventDefault(); dupSel(); return; }
         if (ck === 'g' && ev.shiftKey) { ev.preventDefault(); ungroupSel(); return; }
         if (ck === 'g') { ev.preventDefault(); groupSel(); return; }
@@ -1710,7 +1873,6 @@ function bindKeyboard() {
     if ((ev.ctrlKey || ev.metaKey) && !ev.altKey) {
       const ck = ev.key.toLowerCase();
       if (ck === 'c') { ev.preventDefault(); copySel(); return; }
-      if (ck === 'v') { ev.preventDefault(); pasteSel(); return; }
       if (ck === 'd') { ev.preventDefault(); dupSel(); return; }
       if (ck === 'g' && ev.shiftKey) { ev.preventDefault(); ungroupSel(); return; }
       if (ck === 'g') { ev.preventDefault(); groupSel(); return; }
@@ -1765,7 +1927,7 @@ App.editor = {
   select, toggleSelect, toggleSelectMany, selectLike, setSelection, startMarquee,
   copySel, pasteSel, dupSel, deleteSelection,
   layerSel, toggleLock, groupSel, ungroupSel,
-  startEdit, commitEdit, flushCommit, bindNodeEvents,
+  startEdit, commitEdit, flushCommit, bindNodeEvents, addShape, onPaste,
   addText, addBlock, addImageFromSrc, duplicateEl, deleteEl, layerEl,
   addSlide, duplicateSlide, deleteSlide, gotoSlide,
   renderProps, scheduleThumbSave, pickImage, processFile,
