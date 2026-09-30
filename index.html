@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RBLX Презентации — конструктор слайдов</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🖼️</text></svg>">
+  <link rel="stylesheet" href="css/style.css?v=18">
+  <!-- Google Fonts: список шрифтов панели свойств (кириллица включена) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Bad+Script&family=Caveat:wght@400;700&family=Comfortaa:wght@400;700&family=Fira+Sans:ital,wght@0,400;0,700;1,400&family=Golos+Text:wght@400;700&family=Inter:ital,wght@0,400;0,700;0,800;1,400&family=Manrope:wght@400;700;800&family=Marck+Script&family=Merriweather:wght@400;700&family=Montserrat:ital,wght@0,400;0,700;0,800;1,400&family=Nunito:wght@400;700;800&family=Onest:wght@400;700&family=Open+Sans:ital,wght@0,400;0,700;1,400&family=Oswald:wght@400;700&family=PT+Sans:ital,wght@0,400;0,700;1,400&family=PT+Serif:ital,wght@0,400;0,700;1,400&family=Play:wght@400;700&family=Playfair+Display:wght@400;700&family=Raleway:wght@400;700&family=Roboto:ital,wght@0,400;0,700;1,400&family=Rubik:wght@400;700;800&family=Ubuntu:ital,wght@0,400;0,700;1,400&family=Unbounded:wght@400;700&display=swap" rel="stylesheet">
+</head>
+<body data-theme="neon">
+
+  <!-- ======== Верхняя панель ======== -->
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-logo">▣</span>
+      <span class="brand-name">RBLX<b>Презентации</b></span>
+      <span class="brand-chip">день 1</span>
+    </div>
+
+    <div class="segmented" id="themeSwitch" title="Стиль оформления">
+      <button data-theme="neon" class="active">⚡ Неон</button>
+      <button data-theme="glass">◈ Жидкое стекло</button>
+    </div>
+
+    <div class="topbar-actions">
+      <button class="btn ghost" id="btnExport" title="Скачать проект как JSON">⇩ Экспорт</button>
+      <button class="btn primary" id="btnPresent" title="Начать презентацию (F5)">▶ Презентация</button>
+    </div>
+  </header>
+
+  <!-- ======== Рабочая область ======== -->
+  <div class="workspace">
+
+    <!-- Левая панель: слайды -->
+    <aside class="side-panel left">
+      <div class="panel-head">Слайды</div>
+      <div class="slides-list" id="slidesList"></div>
+      <button class="btn dashed wide" id="btnAddSlide">＋ Новый слайд</button>
+      <div class="panel-foot">
+        <button class="btn mini" id="btnImport" title="Загрузить проект из JSON">⇩ Импорт</button>
+        <button class="btn mini danger" id="btnReset" title="Сбросить всё к началу">⟲ Сброс</button>
+      </div>
+    </aside>
+
+    <!-- Сцена -->
+    <main class="stage-area" id="stageArea">
+      <div class="stage" id="stage">
+        <div class="slide" id="slide"></div>
+      </div>
+      <div class="hint">Двойной клик по тексту — редактировать · Del — удалить · Ctrl+D — дублировать · ← → — сдвиг</div>
+      <div class="zoom-bar" id="zoomBar" title="Масштаб холста: колесо мыши или кнопки">
+        <button data-zoom="out" title="Уменьшить">−</button>
+        <button data-zoom="fit" id="zoomVal" title="Вписать холст (100%)">100%</button>
+        <button data-zoom="in" title="Увеличить">＋</button>
+      </div>
+    </main>
+
+    <!-- Правая панель: свойства -->
+    <aside class="side-panel right" id="propsPanel"></aside>
+  </div>
+
+  <!-- Плавающая панель действий над выбранным элементом -->
+  <div class="el-toolbar hidden" id="elToolbar">
+    <button data-act="up" title="На передний план">⤒</button>
+    <button data-act="down" title="Отправить назад">⤓</button>
+    <button data-act="dup" title="Дублировать (Ctrl+D)">⧉</button>
+    <button data-act="group" title="Сгруппировать (Ctrl+G)">⊞</button>
+    <button data-act="ungroup" title="Разгруппировать (Ctrl+Shift+G)">⊟</button>
+    <button data-act="lock" title="Заблокировать / разблокировать">🔒</button>
+    <button data-act="bg" class="bg-act" title="Удалить фон фотографии">✨ Фон</button>
+    <button data-act="del" class="danger" title="Удалить (Del)">🗑</button>
+  </div>
+
+  <!-- ======== Режим презентации ======== -->
+  <div class="present hidden" id="present">
+    <div class="present-stage" id="presentStage"></div>
+    <div class="present-controls">
+      <button id="pPrev">‹</button>
+      <span id="pCounter">1 / 1</span>
+      <button id="pNext">›</button>
+      <button id="pEdit" title="Режим редактирования прямо в презентации">✏️</button>
+      <button id="pClose" title="Выйти (Esc)">✕</button>
+    </div>
+  </div>
+
+  <!-- ======== Модалка «Удалить фон» ======== -->
+  <div class="modal-back hidden" id="bgModal">
+    <div class="modal">
+      <div class="modal-title">✨ Удаление фона</div>
+      <div class="modal-body">
+        <div class="bg-preview-wrap"><canvas id="bgPreview"></canvas></div>
+        <label class="slider-row">
+          <span>Чувствительность</span>
+          <input type="range" id="bgTolerance" min="5" max="95" value="40">
+          <output id="bgToleranceOut">40</output>
+        </label>
+        <label class="check-row">
+          <input type="checkbox" id="bgFeather" checked>
+          <span>Сглаживать края</span>
+        </label>
+        <p class="modal-note">Алгоритм выделяет фон от краёв снимка. Лучше всего работает на фото с однородным фоном.</p>
+      </div>
+      <div class="modal-actions">
+        <button class="btn ghost" id="bgCancel">Отмена</button>
+        <button class="btn primary" id="bgApply">Применить</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <!-- скрытые инпуты -->
+  <input type="file" id="fileImage" accept="image/*" hidden>
+  <input type="file" id="fileSlideBg" accept="image/*" hidden>
+  <input type="file" id="fileBgImage" accept="image/*" hidden>
+  <input type="file" id="fileImport" accept="application/json,.json" hidden>
+
+  <script src="js/state.js?v=18"></script>
+  <script src="js/storage.js?v=18"></script>
+  <script src="js/render.js?v=18"></script>
+  <script src="js/editor.js?v=18"></script>
+  <script src="js/export.js?v=18"></script>
+  <script src="js/app.js?v=18"></script>
+</body>
+</html>
