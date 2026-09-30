@@ -65,15 +65,32 @@ function applyElStyles(div, e) {
   div.style.transform = e.rotation ? `rotate(${e.rotation}deg)` : '';
 
   if (e.type === 'text') {
+    const P = e.props;
     div.style.width = e.w + 'px';
-    div.style.fontSize = e.props.fontSize + 'px';
-    div.style.color = e.props.color;
-    div.style.fontWeight = e.props.weight;
-    div.style.fontStyle = e.props.italic ? 'italic' : 'normal';
-    div.style.textDecoration = e.props.underline ? 'underline' : 'none';
-    div.style.textAlign = e.props.align;
-    div.style.fontFamily = e.props.fontFamily || '';
-    setTextSafe(div, e.props.text);
+    div.style.fontSize = P.fontSize + 'px';
+    div.style.fontWeight = P.weight;
+    div.style.fontStyle = P.italic ? 'italic' : 'normal';
+    div.style.textDecoration = P.underline ? 'underline' : 'none';
+    div.style.textAlign = P.align;
+    div.style.lineHeight = String(P.lineHeight != null ? P.lineHeight : 1.3);
+    div.style.letterSpacing = (P.letterSpacing != null ? P.letterSpacing : 0) + 'px';
+    div.style.fontFamily = P.fontFamily || '';
+    div.style.textShadow = P.shadowOn
+      ? `${P.shadowX || 0}px ${P.shadowY || 0}px ${P.shadowBlur || 0}px ${P.shadowColor || '#000000'}`
+      : 'none';
+    div.style.setProperty('-webkit-text-stroke',
+      P.strokeWidth > 0 ? `${P.strokeWidth}px ${P.strokeColor || '#000000'}` : 'none');
+    if (P.gradOn) {
+      div.style.backgroundImage =
+        `linear-gradient(${P.gradAngle != null ? P.gradAngle : 90}deg, ${P.gradColor1 || '#ffffff'}, ${P.gradColor2 || '#000000'})`;
+      div.style.setProperty('-webkit-background-clip', 'text');
+      div.style.setProperty('background-clip', 'text');
+      div.style.color = 'transparent';
+    } else {
+      div.style.backgroundImage = 'none';
+      div.style.color = P.color;
+    }
+    setTextSafe(div, P.text);
   } else if (e.type === 'image') {
     div.style.width = e.w + 'px';
     div.style.height = e.h + 'px';
@@ -368,7 +385,7 @@ function renderAll() {
 }
 
 App.render = {
-  $, $$, buildNode, makeScaler, refreshNodes, syncChrome, setTextSafe,
+  $, $$, buildNode, makeScaler, refreshNodes, syncChrome, setTextSafe, applyElStyles,
   renderStage, fitStage, renderThumbs, renderPresent,
   positionToolbar, elNode, activeScale, presentOpen,
   toast, renderAll,

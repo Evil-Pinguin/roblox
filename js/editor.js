@@ -835,11 +835,36 @@ const BG_PRESETS = [
   { css: 'linear-gradient(135deg,#30cfd0,#330867)', preview: 'linear-gradient(135deg,#30cfd0,#330867)' },
   { css: '#0b0b1a', preview: '#0b0b1a' },
 ];
+/* Список шрифтов для панели: Google Fonts (с кириллицей) + старые встроенные.
+   v — готовый CSS-стек (как в props.fontFamily), l — имя для поиска. */
 const FONTS = [
   { v: '', l: 'Системный' },
+  { v: '"Inter", sans-serif', l: 'Inter' },
+  { v: '"Manrope", sans-serif', l: 'Manrope' },
+  { v: '"Montserrat", sans-serif', l: 'Montserrat' },
+  { v: '"Rubik", sans-serif', l: 'Rubik' },
+  { v: '"Nunito", sans-serif', l: 'Nunito' },
+  { v: '"Raleway", sans-serif', l: 'Raleway' },
+  { v: '"Open Sans", sans-serif', l: 'Open Sans' },
+  { v: '"Roboto", sans-serif', l: 'Roboto' },
+  { v: '"PT Sans", sans-serif', l: 'PT Sans' },
+  { v: '"Golos Text", sans-serif', l: 'Golos Text' },
+  { v: '"Onest", sans-serif', l: 'Onest' },
+  { v: '"Fira Sans", sans-serif', l: 'Fira Sans' },
+  { v: '"Ubuntu", sans-serif', l: 'Ubuntu' },
+  { v: '"Comfortaa", sans-serif', l: 'Comfortaa' },
+  { v: '"Play", sans-serif', l: 'Play' },
+  { v: '"Oswald", sans-serif', l: 'Oswald' },
+  { v: '"Unbounded", sans-serif', l: 'Unbounded' },
+  { v: '"PT Serif", serif', l: 'PT Serif' },
+  { v: '"Merriweather", serif', l: 'Merriweather' },
+  { v: '"Playfair Display", serif', l: 'Playfair Display' },
   { v: 'Georgia, serif', l: 'Классика (Georgia)' },
   { v: '"Courier New", monospace', l: 'Моноширинный' },
   { v: '"Trebuchet MS", sans-serif', l: 'Trebuchet' },
+  { v: '"Caveat", cursive', l: 'Caveat' },
+  { v: '"Bad Script", cursive', l: 'Bad Script' },
+  { v: '"Marck Script", cursive', l: 'Marck Script' },
 ];
 
 function renderProps() {
@@ -905,6 +930,14 @@ function renderBaseProps(panel) {
 }
 
 function renderTextProps(panel, e) {
+  const P = e.props;
+  const esc = s => String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  const hex = (v, fb) => (/^#[0-9a-f]{6}$/i.test(v || '') ? v : fb);
+  const curFontLabel = (FONTS.find(f => f.v === (P.fontFamily || '')) || { l: P.fontFamily || 'Системный' }).l;
+  const fontItems = FONTS.map((f, i) =>
+    `<button type="button" class="font-item ${f.v === (P.fontFamily || '') ? 'active' : ''}" data-fi="${i}" data-l="${esc(f.l)}">${esc(f.l)}</button>`
+  ).join('');
+
   panel.innerHTML = `
     <div class="prop-group">
       <div class="prop-group-title">Текст</div>
@@ -915,42 +948,100 @@ function renderTextProps(panel, e) {
       <div class="prop-group-title">Шрифт</div>
       <div class="prop-row">
         <label>Размер</label>
-        <input type="range" id="pSize" min="10" max="120" value="${e.props.fontSize}">
-        <output id="pSizeOut">${e.props.fontSize}</output>
+        <input type="range" id="pSize" min="10" max="120" value="${P.fontSize}">
+        <output id="pSizeOut">${P.fontSize}</output>
       </div>
       <div class="prop-row">
         <label>Начертание</label>
         <div class="seg-group" style="flex:1.2">
-          <button class="seg-btn ${e.props.weight >= 700 ? 'active' : ''}" id="pBold"><b>B</b></button>
-          <button class="seg-btn ${e.props.italic ? 'active' : ''}" id="pItalic"><i>I</i></button>
-          <button class="seg-btn ${e.props.underline ? 'active' : ''}" id="pUnderline"><u>U</u></button>
+          <button class="seg-btn ${P.weight >= 700 ? 'active' : ''}" id="pBold"><b>B</b></button>
+          <button class="seg-btn ${P.italic ? 'active' : ''}" id="pItalic"><i>I</i></button>
+          <button class="seg-btn ${P.underline ? 'active' : ''}" id="pUnderline"><u>U</u></button>
         </div>
       </div>
       <div class="prop-row">
         <label>Шрифт</label>
-        <select class="prop-select" id="pFont">
-          ${FONTS.map(f => `<option value="${f.v}" ${e.props.fontFamily === f.v ? 'selected' : ''}>${f.l}</option>`).join('')}
-        </select>
+        <input class="prop-input" id="pFontSearch" style="width:110px" placeholder="Поиск…" autocomplete="off" value="${esc(curFontLabel === 'Системный' ? '' : curFontLabel)}">
       </div>
-      <div class="prop-row">
-        <label>Выравнивание</label>
-        <div class="seg-group" style="flex:1.2">
-          <button class="seg-btn ${e.props.align === 'left' ? 'active' : ''}" data-al="left">⇤</button>
-          <button class="seg-btn ${e.props.align === 'center' ? 'active' : ''}" data-al="center">≡</button>
-          <button class="seg-btn ${e.props.align === 'right' ? 'active' : ''}" data-al="right">⇥</button>
-        </div>
-      </div>
+      <div class="font-list" id="pFontList">${fontItems}</div>
       <div class="prop-row">
         <label>Цвет</label>
-        <input type="color" id="pColor" value=${/^#[0-9a-f]{6}$/i.test(e.props.color) ? `"${e.props.color}"` : '"#ffffff"'}>
+        <input type="color" id="pColor" value="${hex(P.color, '#ffffff')}">
       </div>
       <div class="swatches" id="pSw">
         ${SWATCHES.map(c => `<div class="swatch" data-c="${c}" style="background:${c}"></div>`).join('')}
       </div>
       <div class="prop-row">
         <label>Прозрачность</label>
-        <input type="range" id="pOpacity" min="10" max="100" value="${Math.round((e.props.opacity ?? 1) * 100)}">
+        <input type="range" id="pOpacity" min="10" max="100" value="${Math.round((P.opacity ?? 1) * 100)}">
       </div>
+    </div>
+
+    <div class="prop-group">
+      <div class="prop-group-title">Интервал</div>
+      <div class="prop-row">
+        <label>Выравнивание</label>
+        <div class="seg-group" style="flex:1.2">
+          <button class="seg-btn ${P.align === 'left' ? 'active' : ''}" data-al="left">⇤</button>
+          <button class="seg-btn ${P.align === 'center' ? 'active' : ''}" data-al="center">≡</button>
+          <button class="seg-btn ${P.align === 'right' ? 'active' : ''}" data-al="right">⇥</button>
+        </div>
+      </div>
+      <div class="prop-row">
+        <label>Межстрочный</label>
+        <input type="range" id="pLineH" min="0.8" max="2.4" step="0.05" value="${P.lineHeight != null ? P.lineHeight : 1.3}">
+        <output id="pLineHOut">${P.lineHeight != null ? P.lineHeight : 1.3}</output>
+      </div>
+      <div class="prop-row">
+        <label>Межбуквенный</label>
+        <input type="range" id="pLetterS" min="-2" max="12" step="0.5" value="${P.letterSpacing != null ? P.letterSpacing : 0}">
+        <output id="pLetterSOut">${P.letterSpacing != null ? P.letterSpacing : 0}</output>
+      </div>
+    </div>
+
+    <div class="prop-group">
+      <div class="prop-group-title">Эффекты</div>
+      <div class="prop-row">
+        <label>Тень</label>
+        <div class="seg-group" style="flex:1.2">
+          <button class="seg-btn ${P.shadowOn ? 'active' : ''}" id="pShadow" style="flex:1">✦ Тень</button>
+          <input type="color" id="pShadowColor" value="${hex(P.shadowColor, '#000000')}">
+        </div>
+      </div>
+      ${P.shadowOn ? `
+      <div class="prop-row">
+        <label>Размытие</label>
+        <input type="range" id="pShadowBlur" min="0" max="40" step="1" value="${P.shadowBlur}">
+        <output id="pShadowBlurOut">${P.shadowBlur}</output>
+      </div>
+      <div class="prop-row">
+        <label>Смещение X</label>
+        <input type="range" id="pShadowX" min="-30" max="30" step="1" value="${P.shadowX}">
+      </div>
+      <div class="prop-row">
+        <label>Смещение Y</label>
+        <input type="range" id="pShadowY" min="-30" max="30" step="1" value="${P.shadowY}">
+      </div>` : ''}
+      <div class="prop-row">
+        <label>Обводка</label>
+        <input type="range" id="pStrokeW" min="0" max="8" step="0.5" value="${P.strokeWidth}">
+        <output id="pStrokeWOut">${P.strokeWidth}</output>
+        <input type="color" id="pStrokeColor" value="${hex(P.strokeColor, '#000000')}">
+      </div>
+      <div class="prop-row">
+        <label>Градиент</label>
+        <div class="seg-group" style="flex:1.2">
+          <button class="seg-btn ${P.gradOn ? 'active' : ''}" id="pGrad" style="flex:1">◐ Градиент</button>
+          <input type="color" id="pGradC1" value="${hex(P.gradColor1, '#00f2fe')}">
+          <input type="color" id="pGradC2" value="${hex(P.gradColor2, '#ff4fa3')}">
+        </div>
+      </div>
+      ${P.gradOn ? `
+      <div class="prop-row">
+        <label>Угол</label>
+        <input type="range" id="pGradAngle" min="0" max="360" step="1" value="${P.gradAngle}">
+        <output id="pGradAngleOut">${P.gradAngle}°</output>
+      </div>` : ''}
     </div>
 
     <div class="prop-group">
@@ -961,7 +1052,7 @@ function renderTextProps(panel, e) {
     </div>`;
 
   const ta = panel.querySelector('#pText');
-  ta.value = e.props.text;
+  ta.value = P.text;
   // живой предпросмотр: пока пользователь печатает, панель не пересобираем
   ta.addEventListener('input', () => {
     e.props.text = ta.value;
@@ -971,51 +1062,91 @@ function renderTextProps(panel, e) {
   });
   ta.addEventListener('change', () => setState());   // коммит ввода
 
-  bindRange(panel, '#pSize', '#pSizeOut', v => {
-    e.props.fontSize = +v;
-    applyTextStyle(e);
-  });
+  bindRange(panel, '#pSize', '#pSizeOut', v => { e.props.fontSize = +v; applyTextStyle(e); });
   bindRange(panel, '#pOpacity', null, v => { e.props.opacity = v / 100; applyTextStyle(e); });
+  bindRange(panel, '#pLineH', '#pLineHOut', v => { e.props.lineHeight = +v; applyTextStyle(e); });
+  bindRange(panel, '#pLetterS', '#pLetterSOut', v => { e.props.letterSpacing = +v; applyTextStyle(e); });
+  bindRange(panel, '#pStrokeW', '#pStrokeWOut', v => { e.props.strokeWidth = +v; applyTextStyle(e); });
+  bindRange(panel, '#pShadowBlur', '#pShadowBlurOut', v => { e.props.shadowBlur = +v; applyTextStyle(e); });
+  bindRange(panel, '#pShadowX', null, v => { e.props.shadowX = +v; applyTextStyle(e); });
+  bindRange(panel, '#pShadowY', null, v => { e.props.shadowY = +v; applyTextStyle(e); });
+  bindRange(panel, '#pGradAngle', '#pGradAngleOut', v => { e.props.gradAngle = +v; applyTextStyle(e); });
 
   panel.querySelector('#pBold').onclick = () => {
     const w = e.props.weight >= 700 ? 400 : 800;
     setState(() => { e.props.weight = w; });
   };
-  panel.querySelector('#pItalic').onclick = () => {
-    setState(() => { e.props.italic = !e.props.italic; });
-  };
-  panel.querySelector('#pUnderline').onclick = () => {
-    setState(() => { e.props.underline = !e.props.underline; });
-  };
-  panel.querySelector('#pFont').onchange = ev => {
-    const ff = ev.target.value;
-    setState(() => { e.props.fontFamily = ff; });
-  };
+  panel.querySelector('#pItalic').onclick = () => setState(() => { e.props.italic = !e.props.italic; });
+  panel.querySelector('#pUnderline').onclick = () => setState(() => { e.props.underline = !e.props.underline; });
+  panel.querySelector('#pShadow').onclick = () => setState(() => { e.props.shadowOn = !e.props.shadowOn; });
+  panel.querySelector('#pGrad').onclick = () => setState(() => { e.props.gradOn = !e.props.gradOn; });
   panel.querySelectorAll('[data-al]').forEach(b => {
     b.onclick = () => { const al = b.dataset.al; setState(() => { e.props.align = al; }); };
   });
-  panel.querySelector('#pColor').oninput = ev => { e.props.color = ev.target.value; applyTextStyle(e); };
-  panel.querySelector('#pColor').addEventListener('change', () => setState());
+
+  // цвета: живой предпросмотр, коммит — на change
+  const bindColor = (sel, setter) => {
+    const inp = panel.querySelector(sel);
+    if (!inp) return;
+    inp.oninput = ev => { setter(ev.target.value); applyTextStyle(e); };
+    inp.addEventListener('change', () => setState());
+  };
+  bindColor('#pColor', v => { e.props.color = v; });
+  bindColor('#pShadowColor', v => { e.props.shadowColor = v; });
+  bindColor('#pStrokeColor', v => { e.props.strokeColor = v; });
+  bindColor('#pGradC1', v => { e.props.gradColor1 = v; });
+  bindColor('#pGradC2', v => { e.props.gradColor2 = v; });
+
   panel.querySelectorAll('#pSw .swatch').forEach(sw => {
     sw.onclick = () => { const c = sw.dataset.c; setState(() => { e.props.color = c; }); };
   });
+
+  // поиск шрифта: фильтруем список локально, без записи в историю
+  const search = panel.querySelector('#pFontSearch');
+  const list = panel.querySelector('#pFontList');
+  const filterFonts = () => {
+    const q = (search.value || '').trim().toLowerCase();
+    let shown = 0;
+    list.querySelectorAll('.font-item').forEach(it => {
+      const ok = !q || (it.dataset.l || '').toLowerCase().includes(q);
+      it.style.display = ok ? '' : 'none';
+      if (ok) shown++;
+    });
+    let empty = list.querySelector('.font-empty');
+    if (!shown) {
+      if (!empty) {
+        empty = document.createElement('div');
+        empty.className = 'font-empty';
+        empty.textContent = 'Ничего не найдено';
+        list.appendChild(empty);
+      }
+    } else if (empty) empty.remove();
+  };
+  search.addEventListener('input', filterFonts);
+  search.addEventListener('focus', () => { search.value = ''; filterFonts(); });
+  search.addEventListener('blur', () => {
+    if (!(search.value || '').trim()) {
+      search.value = curFontLabel === 'Системный' ? '' : curFontLabel;
+      filterFonts();
+    }
+  });
+  list.querySelectorAll('.font-item').forEach(it => {
+    it.onclick = () => {
+      const f = FONTS[+it.dataset.fi];
+      if (f) setState(() => { e.props.fontFamily = f.v; });
+    };
+  });
+
   panel.querySelector('#pDup').onclick = () => dupSel();
   panel.querySelector('#pDel').onclick = () => deleteSelection();
 }
 
-/* живой предпросмотр стиля текста (внутри жеста ввода/слайдера) */
+/* живой предпросмотр стиля текста (внутри жеста ввода/слайдера) —
+   тот же код, что и при полной перерисовке, чтобы стили не расходились */
 function applyTextStyle(e) {
   const node = elNode(e.id);
   if (node) {
-    node.style.fontSize = e.props.fontSize + 'px';
-    node.style.color = e.props.color;
-    node.style.fontWeight = e.props.weight;
-    node.style.fontStyle = e.props.italic ? 'italic' : 'normal';
-    node.style.textDecoration = e.props.underline ? 'underline' : 'none';
-    node.style.textAlign = e.props.align;
-    node.style.opacity = e.props.opacity ?? 1;
-    node.style.fontFamily = e.props.fontFamily || '';
-    node.style.width = e.w + 'px';
+    R.applyElStyles(node, e);
     if (node.offsetHeight > 0) e.h = node.offsetHeight;
   }
   scheduleThumbSave();

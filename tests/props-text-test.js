@@ -16,7 +16,7 @@ const $p = sel => panel().querySelector(sel);
 {
   const id = firstText().dataset.id;
   App.editor.select(id);
-  check('есть выбор шрифта (pFont)', !!$p('#pFont'));
+  check('есть поиск шрифта (pFontSearch)', !!$p('#pFontSearch') && !!$p('#pFontList'));
   check('есть размер (pSize)', !!$p('#pSize'));
   check('есть цвет (pColor)', !!$p('#pColor'));
   check('есть жирный (pBold)', !!$p('#pBold'));
@@ -56,11 +56,10 @@ const $p = sel => panel().querySelector(sel);
   const id = firstText().dataset.id;
   const node = () => doc.querySelector(`#stage .el.text[data-id="${id}"]`);
 
-  const font = $p('#pFont');
-  const opt = font.options[1] ? font.options[1].value : font.options[0].value;
-  font.value = opt;
-  font.dispatchEvent(new window.Event('change'));
-  check('шрифт применился', E(id).props.fontFamily === opt && node().style.fontFamily.length > 0);
+  const item = doc.querySelector('#pFontList .font-item[data-l="Inter"]') ||
+    doc.querySelector('#pFontList .font-item:not(.active)');
+  item.click();
+  check('шрифт применился', E(id).props.fontFamily.length > 0 && node().style.fontFamily.length > 0);
 
   const size = $p('#pSize');
   size.value = '48';
