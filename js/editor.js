@@ -497,7 +497,7 @@ function bindNodeEvents(node, ref) {
       else gv.classList.remove('on');
       if (gy !== null) { gh.classList.add('on'); gh.style.top = Math.round(vy + gy * sc) + 'px'; }
       else gh.classList.remove('on');
-      R.positionToolbar();
+      hideToolbar();          // во время перетаскивания панель скрыта
     };
     // слушаем на window: жест переживает выход курсора за пределы узла
     // и окна (в браузере дополнительно помогает setPointerCapture)
@@ -508,7 +508,8 @@ function bindNodeEvents(node, ref) {
       win.removeEventListener('lostpointercapture', end);
       if (gv.parentNode) gv.remove();
       if (gh.parentNode) gh.remove();
-      if (moved) setState();   // коммит жеста — одна запись истории
+      gestureHide = false;     // отпустили — показываем панель снова
+      if (moved) setState();   // коммит жеста → renderAll → posToolbar
     };
     win.addEventListener('pointermove', onMove);
     win.addEventListener('pointerup', end);
@@ -610,14 +611,15 @@ function bindNodeEvents(node, ref) {
           live.style.width = cur.w + 'px';
           live.style.height = cur.h + 'px';
         }
-        R.positionToolbar();
+        hideToolbar();          // во время ресайза панель скрыта
       };
       const end = () => {
         win.removeEventListener('pointermove', onMove);
         win.removeEventListener('pointerup', end);
         win.removeEventListener('pointercancel', end);
         win.removeEventListener('lostpointercapture', end);
-        setState();   // коммит жеста — одна запись истории
+        gestureHide = false;  // отпустили — панель возвращается
+        setState();   // коммит жеста → renderAll → posToolbar
       };
       win.addEventListener('pointermove', onMove);
       win.addEventListener('pointerup', end);
@@ -656,7 +658,7 @@ function bindNodeEvents(node, ref) {
       cur.rotation = deg;
       const live = elNode(id) || node;
       live.style.transform = deg ? `rotate(${deg}deg)` : '';
-      R.positionToolbar();
+      posToolbar();
     };
     const end = () => {
       win.removeEventListener('pointermove', onMove);
@@ -905,6 +907,58 @@ function setZoom(z) {
 }
 function zoomBy(f) {
   setZoom((state.ui.zoom || 1) * f);
+}
+
+/* ===== Плавающая панель действий (Задача 2) ===== */
+let gestureHide = false;   // drag/resize активен — панель скрыта
+
+function hideToolbar() {
+  gestureHide = true;
+  const bar = $('#elToolbar');
+  if (bar) bar.classList.add('hidden');
+}
+
+/* панель: прямо над рамкой по центру; если не помещается сверху — под ней;
+   не выходит за границы холста и не перекрывает подсказку */
+function posToolbar() {
+  const bar = $('#elToolbar');
+  if (!bar) return;
+  const id = state.ui.selected;
+  if (gestureHide || !id || state.ui.editingId === id ||
+      (R.presentOpen() && !state.ui.presentEdit)) {
+    bar.classList.add('hidden');
+    return;
+  }
+  const node = elNode(id);
+  if (!node) { bar.classList.add('hidden'); return; }
+  const e = findEl(id);
+  bar.classList.remove('hidden');
+
+  const area = $('#stageArea');
+  const ar = area ? area.getBoundingClientRect()
+    : { left: 0, top: 0, right: window.innerWidth, bottom: window.innerHeight };
+  const hint = document.querySelector('.stage-area .hint');
+  const hr = hint ? hint.getBoundingClientRect() : null;
+  const zoneTop = ar.top + 6;
+  // подсказка занимает низ холста — рабочая зона заканчивается над ней
+  const zoneBottom = (hr && hr.height > 0 && hr.top > ar.bottom - 140) ? hr.top - 6 : ar.bottom - 6;
+
+  const r = node.getBoundingClientRect();
+  const bw = bar.offsetWidth, bh = bar.offsetHeight;
+  let top = r.top - bh - 8;                  // над рамкой…
+  if (top < zoneTop) top = r.bottom + 8;      // …или под ней, если не влезает
+  let left = r.left + r.width / 2 - bw / 2;   // по центру рамки
+  // границы холста
+  left = Math.max(ar.left + 6, Math.min(left, ar.right - bw - 6));
+  top = Math.max(zoneTop, Math.min(top, zoneBottom - bh));
+  // подсказка не должна перекрываться
+  if (hr && hr.height > 0 && top + bh > hr.top - 4 && top < hr.bottom - 4) {
+    top = Math.max(zoneTop, hr.top - bh - 6);
+  }
+  bar.style.top = Math.round(top) + 'px';
+  bar.style.left = Math.round(left) + 'px';
+  const bgAct = bar.querySelector('.bg-act');
+  if (bgAct) bgAct.style.display = e && e.type === 'image' ? '' : 'none';
 }
 
 /* формат слайда (п.28): 16:9 / 4:3 / 1:1 / 9:16 — элементы масштабируются */
@@ -1385,7 +1439,7 @@ function cropLive(e) {
     R.applyElStyles(n, e);
     n.style.width = e.w + 'px';
     n.style.height = e.h + 'px';
-    R.positionToolbar();
+    posToolbar();
   }
 }
 
@@ -1412,7 +1466,7 @@ function cropCancel(e) {
     R.applyElStyles(n, e);
     n.style.width = e.w + 'px';
     n.style.height = e.h + 'px';
-    R.positionToolbar();
+    posToolbar();
   }
   renderProps();
 }
@@ -1457,7 +1511,7 @@ function renderImageProps(panel, e) {
       </div>
       ${P.maskShape !== 'circle' ? `
       <div class="prop-row">
-        <label>Скругление</label>
+        <label>Скругление углов</label>
         <input type="range" id="pRadius" min="0" max="70" value="${P.radius || 0}">
       </div>` : ''}
       <div class="prop-row">
@@ -1468,10 +1522,11 @@ function renderImageProps(panel, e) {
         <label>Прозрачность</label>
         <input type="range" id="pOpacity" min="10" max="100" value="${Math.round((P.opacity ?? 1) * 100)}">
       </div>
-    </div>
-
-    <div class="prop-group">
-      <div class="prop-group-title">Фильтры</div>
+      <div class="prop-row">
+        <label>Тень</label>
+        <input type="range" id="pShadow" min="0" max="60" step="1" value="${P.shadow || 0}">
+        <output id="pShadowOut">${P.shadow || 0}</output>
+      </div>
       <div class="prop-row">
         <label>Яркость</label>
         <input type="range" id="pBright" min="50" max="150" step="1" value="${P.brightness != null ? P.brightness : 100}">
@@ -1523,9 +1578,10 @@ function renderImageProps(panel, e) {
     e.w = nw; e.h = Math.round(nw / ar);
     const n = nodeOf();
     if (n) { n.style.width = e.w + 'px'; n.style.height = e.h + 'px'; }
-    R.positionToolbar();
+    posToolbar();
   });
   bindRange(panel, '#pOpacity', null, v => { e.props.opacity = v / 100; live(); });
+  bindRange(panel, '#pShadow', '#pShadowOut', v => { e.props.shadow = +v; live(); });
 
   bindRange(panel, '#pBright', '#pBrightOut', v => { e.props.brightness = +v; live(); });
   bindRange(panel, '#pContrast', '#pContrastOut', v => { e.props.contrast = +v; live(); });
@@ -1732,7 +1788,7 @@ function renderStickerProps(panel, e) {
     e.w = +v; e.h = +v; live();
     const n = elNode(e.id);
     if (n) { n.style.width = e.w + 'px'; n.style.height = e.h + 'px'; }
-    R.positionToolbar();
+    posToolbar();
   });
   bindRange(panel, '#pOpacity', null, v => { e.props.opacity = v / 100; live(); });
   panel.querySelector('#pDup').onclick = () => dupSel();
@@ -2342,6 +2398,16 @@ function init() {
   R.bindSlideDnd();
   bindSlideBgInput();
   bindZoom();
+  /* renderAll живёт в render.js — после каждого рендера применяем
+     своё позиционирование панели (Задача 2), не трогая сам render.js */
+  const origRenderAll = App.render.renderAll;
+  if (typeof origRenderAll === 'function') {
+    App.render.renderAll = function () {
+      const out = origRenderAll.apply(App.render, arguments);
+      posToolbar();
+      return out;
+    };
+  }
   bindThemeSwitch();
   bindImageInput();
   bindBgModal();
@@ -2352,7 +2418,7 @@ function init() {
   window.addEventListener('resize', () => {
     if (App.render.presentOpen()) R.renderPresent();
     else R.fitStage();
-    R.positionToolbar();
+    posToolbar();
   });
 }
 
@@ -2363,7 +2429,7 @@ App.editor = {
   startEdit, commitEdit, flushCommit, bindNodeEvents, addShape, addIcon, addSticker, onPaste,
   addText, addBlock, addImageFromSrc, duplicateEl, deleteEl, layerEl,
   addSlide, duplicateSlide, deleteSlide, gotoSlide, moveSlide, setSlideSize,
-  setZoom, zoomBy,
+  setZoom, zoomBy, posToolbar, hideToolbar,
   renderProps, scheduleThumbSave, pickImage, processFile,
   openBgModal, closeBgModal, removeBg, drawBgPreview, applyBgRemoval,
   setTheme, openPresent, closePresent, togglePresentEdit, presentStep,

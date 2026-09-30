@@ -203,6 +203,9 @@ function applyElStyles(div, e) {
     div.style.width = e.w + 'px';
     div.style.height = e.h + 'px';
     div.style.borderRadius = P.maskShape === 'circle' ? '50%' : (P.radius || 0) + 'px';
+    div.style.boxShadow = P.shadow > 0
+      ? `0 10px ${P.shadow}px rgba(0,0,0,${Math.min(0.6, 0.18 + P.shadow / 150).toFixed(2)})`
+      : 'none';
     const img = div.querySelector('img');
     if (img) {
       if (img.getAttribute('src') !== P.src) img.src = P.src;

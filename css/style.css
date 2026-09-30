@@ -308,6 +308,11 @@ button { font-family: var(--font); cursor: pointer; }
 }
 .side-panel.left  { width: 190px; }
 .side-panel.right { width: 300px; }   /* фиксированная ширина 280–320px */
+/* видимый скролл панели — содержимое ниже сгибов не теряется */
+.side-panel { scrollbar-width: thin; scrollbar-color: rgba(128, 140, 180, .55) transparent; }
+.side-panel::-webkit-scrollbar { width: 8px; }
+.side-panel::-webkit-scrollbar-thumb { background: rgba(128, 140, 180, .5); border-radius: 8px; }
+.side-panel::-webkit-scrollbar-thumb:hover { background: rgba(128, 140, 180, .8); }
 .panel-head {
   font-size: 11px;
   text-transform: uppercase;

@@ -28,7 +28,7 @@ const num = (v, d) => (typeof v === 'number' && isFinite(v) ? v : d);
 /* ---------- дефолтные props по типам ---------- */
 function defaultProps(type) {
   if (type === 'image') return { src: '', originalSrc: null, radius: 24, opacity: 1, ar: 16 / 9,
-    brightness: 100, contrast: 100, blur: 0, maskShape: 'rect', crop: null, origAr: null };
+    brightness: 100, contrast: 100, blur: 0, shadow: 0, maskShape: 'rect', crop: null, origAr: null };
   if (type === 'icon') return { icon: 'star', fill: '#eafcff', opacity: 1 };
   if (type === 'sticker') return { emoji: '😀', opacity: 1 };
   if (type === 'block') return { fill: 'rgba(127,127,127,.14)', radius: 22, opacity: 1 };
