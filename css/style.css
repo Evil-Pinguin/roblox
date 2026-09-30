@@ -287,8 +287,11 @@ button { font-family: var(--font); cursor: pointer; }
 /* ---- Workspace ---- */
 .workspace {
   display: grid;
-  grid-template-columns: 184px 1fr 244px;
+  /* три зоны: миниатюры · холст (fit) · свойства 300px */
+  grid-template-columns: 190px minmax(0, 1fr) 300px;
   height: calc(100vh - var(--topbar-h));
+  min-height: 0;
+  overflow: hidden;
 }
 
 .side-panel {
@@ -296,9 +299,15 @@ button { font-family: var(--font); cursor: pointer; }
   flex-direction: column;
   padding: 14px;
   gap: 12px;
+  min-width: 0;
+  /* собственный вертикальный скролл; колесо не утекает на холст */
   overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
   z-index: 20;
 }
+.side-panel.left  { width: 190px; }
+.side-panel.right { width: 300px; }   /* фиксированная ширина 280–320px */
 .panel-head {
   font-size: 11px;
   text-transform: uppercase;
@@ -400,6 +409,8 @@ button { font-family: var(--font); cursor: pointer; }
   align-items: center;
   justify-content: center;
   position: relative;
+  min-width: 0;
+  min-height: 0;
   padding: 14px;
   overflow: auto;
   background-image:
@@ -412,7 +423,7 @@ button { font-family: var(--font); cursor: pointer; }
   .stage-area { justify-content: safe center; }
 }
 
-.stage { position: relative; }
+.stage { position: relative; flex: 0 0 auto; }   /* холст не сжимается ни на пиксель */
 .slide-frame {
   border-radius: var(--radius);
   overflow: hidden;
