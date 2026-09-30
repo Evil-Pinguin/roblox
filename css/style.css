@@ -438,6 +438,15 @@ button { font-family: var(--font); cursor: pointer; }
   padding: 4px 6px;
   min-width: 40px;
 }
+/* Зона двойного клика/перетаскивания текста больше его геометрии:
+   прозрачный ореол вокруг бокса (только мишень событий, ничего не рисует,
+   ручки ресайза и содержимое остаются сверху). */
+.el.text::before {
+  content: '';
+  position: absolute;
+  inset: -16px;
+  z-index: -1;
+}
 .el.text[contenteditable="true"] {
   cursor: text;
   user-select: text;

@@ -36,6 +36,7 @@ const dbl = (el, pid = 1) => {
 
   const css = fs.readFileSync(path.join(root, 'css/style.css'), 'utf8');
   check('CSS: ручки скрыты в правке', /\.el\.editing \.handle/.test(css));
+  check('CSS: ореол двойного клика у текста', /\.el\.text::before/.test(css));
 }
 
 /* 2. ввод + blur коммитит в модель */
