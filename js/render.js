@@ -202,9 +202,10 @@ function fitStage() {
   const vp = $('#stageViewport');
   if (!vp) return;
   const area = $('#stageArea');
-  const availW = area.clientWidth - 56;
-  const availH = area.clientHeight - 76;
-  let scale = Math.min(availW / SLIDE_W, availH / SLIDE_H, 1.15);
+  const availW = area.clientWidth - 32;
+  const availH = area.clientHeight - 56;
+  // без потолка 1.15: сцена занимает всю свободную зону на любых мониторах
+  let scale = Math.min(availW / SLIDE_W, availH / SLIDE_H);
   // крошечное/непоказанное окно → scale ≤ 0: drag и layout ломались
   if (!Number.isFinite(scale) || scale < 0.05) scale = 0.05;
   state.ui.scale = scale;

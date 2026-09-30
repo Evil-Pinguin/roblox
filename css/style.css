@@ -287,7 +287,7 @@ button { font-family: var(--font); cursor: pointer; }
 /* ---- Workspace ---- */
 .workspace {
   display: grid;
-  grid-template-columns: 210px 1fr 264px;
+  grid-template-columns: 184px 1fr 244px;
   height: calc(100vh - var(--topbar-h));
 }
 
@@ -368,7 +368,7 @@ button { font-family: var(--font); cursor: pointer; }
   align-items: center;
   justify-content: center;
   position: relative;
-  padding: 26px;
+  padding: 14px;
   overflow: hidden;
   background-image:
     linear-gradient(var(--grid-line) 1px, transparent 1px),
@@ -751,7 +751,7 @@ body.present-edit .hint { display: none; }
 
 /* ---- Адаптив ---- */
 @media (max-width: 1080px) {
-  .workspace { grid-template-columns: 170px 1fr 230px; }
+  .workspace { grid-template-columns: 158px 1fr 224px; }
   .brand-chip { display: none; }
 }
 @media (max-width: 860px) {

@@ -56,8 +56,8 @@ function makeDom(seed) {
 /* jsdom без layout: задаём размеры зоны → fitStage даёт scale 1:1 */
 function setStageScale(window, scale) {
   const area = window.document.querySelector('#stageArea');
-  Object.defineProperty(area, 'clientWidth',  { value: 1280 * scale + 56, configurable: true });
-  Object.defineProperty(area, 'clientHeight', { value: 720 * scale + 76, configurable: true });
+  Object.defineProperty(area, 'clientWidth',  { value: 1280 * scale + 32, configurable: true });
+  Object.defineProperty(area, 'clientHeight', { value: 720 * scale + 56, configurable: true });
 }
 
 module.exports = { check, finish, makeDom, setStageScale, root, html };
